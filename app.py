@@ -14,9 +14,25 @@ HIRE_LIST_ID = os.environ.get("HIRE_LIST_ID")
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
-    form_type = data.get("form_type")
-    customer_name = data.get("full_name", "Unknown")
-    machine = data.get("machine", "Unknown Machine")
+    print("INCOMING DATA:", data)
+
+    form_type = (
+        data.get("form_type") or
+        data.get("customData", {}).get("form_type") or
+        "dropoff"
+    )
+
+    customer_name = (
+        data.get("full_name") or
+        data.get("customData", {}).get("full_name") or
+        data.get("contact_full_name", "Unknown")
+    )
+
+    machine = (
+        data.get("machine") or
+        data.get("customData", {}).get("machine") or
+        "Unknown Machine"
+    )
 
     if form_type == "dropoff":
         template_id = DROPOFF_TEMPLATE_ID
