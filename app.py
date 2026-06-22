@@ -24,10 +24,36 @@ def webhook():
     brand = data.get("Brand", "")
     model = data.get("Model", "")
     serial_number = data.get("Serial Number", "")
-    symptoms = data.get("Job Description / Issue Details", "")
     job_type = data.get("Job Type", "")
 
-    description = f"""👤 Customer: {customer_name}
+    if form_type == "hire":
+        hire_date = data.get("Hire Date", "")
+        return_date = data.get("Return Date", "")
+        hire_charge = data.get("Hire Charge", "")
+        security_deposit = data.get("Security Deposit", "")
+        accessories = data.get("Accessories", "")
+
+        description = f"""👤 Customer: {customer_name}
+📱 Phone: {phone}
+📧 Email: {email}
+🏢 Business: {business_name}
+🔧 Brand: {brand}
+📋 Model: {model}
+🔢 Serial: {serial_number}
+📦 Accessories: {accessories}
+📅 Hire Date: {hire_date}
+📅 Return Date: {return_date}
+💰 Hire Charge: {hire_charge}
+🔒 Security Deposit: {security_deposit}"""
+
+        template_id = HIRE_TEMPLATE_ID
+        list_id = HIRE_LIST_ID
+        card_name = f"Hire — {customer_name} | {brand} {model}"
+
+    else:
+        symptoms = data.get("Job Description / Issue Details", "")
+
+        description = f"""👤 Customer: {customer_name}
 📱 Phone: {phone}
 📧 Email: {email}
 🏢 Business: {business_name}
@@ -37,14 +63,9 @@ def webhook():
 🛠️ Job Type: {job_type}
 ⚠️ Issue: {symptoms}"""
 
-    if form_type == "dropoff":
         template_id = DROPOFF_TEMPLATE_ID
         list_id = DROPOFF_LIST_ID
         card_name = f"Drop-Off — {customer_name} | {brand} {model}"
-    else:
-        template_id = HIRE_TEMPLATE_ID
-        list_id = HIRE_LIST_ID
-        card_name = f"Hire — {customer_name} | {brand} {model}"
 
     # Step 1 - Create card from template
     create_params = {
@@ -59,7 +80,7 @@ def webhook():
     card = create_response.json()
     card_id = card.get("id")
 
-    # Step 2 - Update the description separately
+    # Step 2 - Update description separately
     update_params = {
         "key": TRELLO_KEY,
         "token": TRELLO_TOKEN,
