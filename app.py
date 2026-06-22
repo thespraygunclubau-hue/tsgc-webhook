@@ -46,20 +46,28 @@ def webhook():
         list_id = HIRE_LIST_ID
         card_name = f"Hire — {customer_name} | {brand} {model}"
 
-    url = "https://api.trello.com/1/cards"
-    params = {
+    # Step 1 - Create card from template
+    create_params = {
         "key": TRELLO_KEY,
         "token": TRELLO_TOKEN,
         "idCardSource": template_id,
         "idList": list_id,
         "name": card_name,
-        "desc": description,
         "keepFromSource": "checklists"
     }
-    response = requests.post(url, params=params)
-    card = response.json()
+    create_response = requests.post("https://api.trello.com/1/cards", params=create_params)
+    card = create_response.json()
+    card_id = card.get("id")
 
-    return jsonify({"status": "ok", "card_id": card.get("id")}), 200
+    # Step 2 - Update the description separately
+    update_params = {
+        "key": TRELLO_KEY,
+        "token": TRELLO_TOKEN,
+        "desc": description
+    }
+    requests.put(f"https://api.trello.com/1/cards/{card_id}", params=update_params)
+
+    return jsonify({"status": "ok", "card_id": card_id}), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
