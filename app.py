@@ -25,14 +25,25 @@ def webhook():
     customer_name = (
         data.get("full_name") or
         data.get("customData", {}).get("full_name") or
-        data.get("contact_full_name", "Unknown")
+        "Unknown"
     )
 
-    machine = (
-        data.get("machine") or
-        data.get("customData", {}).get("machine") or
-        "Unknown Machine"
-    )
+    phone = data.get("phone") or data.get("customData", {}).get("phone", "")
+    email = data.get("email") or data.get("customData", {}).get("email", "")
+    business_name = data.get("business_name") or data.get("customData", {}).get("business_name", "")
+    machine = data.get("machine") or data.get("customData", {}).get("machine", "Unknown Machine")
+    model = data.get("model") or data.get("customData", {}).get("model", "")
+    serial_number = data.get("serial_number") or data.get("customData", {}).get("serial_number", "")
+    symptoms = data.get("symptoms") or data.get("customData", {}).get("symptoms", "")
+
+    description = f"""👤 Customer: {customer_name}
+📱 Phone: {phone}
+📧 Email: {email}
+🏢 Business: {business_name}
+🔧 Machine: {machine}
+📋 Model: {model}
+🔢 Serial: {serial_number}
+⚠️ Symptoms: {symptoms}"""
 
     if form_type == "dropoff":
         template_id = DROPOFF_TEMPLATE_ID
@@ -50,6 +61,7 @@ def webhook():
         "idCardSource": template_id,
         "idList": list_id,
         "name": card_name,
+        "desc": description,
         "keepFromSource": "checklists"
     }
     response = requests.post(url, params=params)
