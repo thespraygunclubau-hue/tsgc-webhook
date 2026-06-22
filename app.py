@@ -16,43 +16,35 @@ def webhook():
     data = request.json
     print("INCOMING DATA:", data)
 
-    form_type = (
-        data.get("form_type") or
-        data.get("customData", {}).get("form_type") or
-        "dropoff"
-    )
-
-    customer_name = (
-        data.get("full_name") or
-        data.get("customData", {}).get("full_name") or
-        "Unknown"
-    )
-
-    phone = data.get("phone") or data.get("customData", {}).get("phone", "")
-    email = data.get("email") or data.get("customData", {}).get("email", "")
-    business_name = data.get("business_name") or data.get("customData", {}).get("business_name", "")
-    machine = data.get("machine") or data.get("customData", {}).get("machine", "Unknown Machine")
-    model = data.get("model") or data.get("customData", {}).get("model", "")
-    serial_number = data.get("serial_number") or data.get("customData", {}).get("serial_number", "")
-    symptoms = data.get("symptoms") or data.get("customData", {}).get("symptoms", "")
+    form_type = data.get("customData", {}).get("form_type", "dropoff")
+    customer_name = data.get("full_name", "Unknown")
+    phone = data.get("phone", "")
+    email = data.get("email", "")
+    business_name = data.get("Business Name (Optional)", "")
+    brand = data.get("Brand", "")
+    model = data.get("Model", "")
+    serial_number = data.get("Serial Number", "")
+    symptoms = data.get("Job Description / Issue Details", "")
+    job_type = data.get("Job Type", "")
 
     description = f"""👤 Customer: {customer_name}
 📱 Phone: {phone}
 📧 Email: {email}
 🏢 Business: {business_name}
-🔧 Machine: {machine}
+🔧 Brand: {brand}
 📋 Model: {model}
 🔢 Serial: {serial_number}
-⚠️ Symptoms: {symptoms}"""
+🛠️ Job Type: {job_type}
+⚠️ Issue: {symptoms}"""
 
     if form_type == "dropoff":
         template_id = DROPOFF_TEMPLATE_ID
         list_id = DROPOFF_LIST_ID
-        card_name = f"Drop-Off — {customer_name} | {machine}"
+        card_name = f"Drop-Off — {customer_name} | {brand} {model}"
     else:
         template_id = HIRE_TEMPLATE_ID
         list_id = HIRE_LIST_ID
-        card_name = f"Hire — {customer_name} | {machine}"
+        card_name = f"Hire — {customer_name} | {brand} {model}"
 
     url = "https://api.trello.com/1/cards"
     params = {
