@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}TSGC Registry{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg: #f7f7f5;
@@ -11,27 +14,34 @@
       --border: #e4e2dd;
       --text: #1c1c1a;
       --muted: #6b6b66;
-      --accent: #b3401a;
-      --accent-hover: #92330f;
+      --accent: #ff4e4f;
+      --accent-hover: #e63a3b;
+      --brand-pink: #f1616f;
+      --header-bg: #0a0a0a;
+      --header-text: #ffffff;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
       background: var(--bg);
       color: var(--text);
     }
     header {
-      padding: 20px 32px;
-      border-bottom: 1px solid var(--border);
+      padding: 18px 32px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: var(--card);
+      background: var(--header-bg);
     }
-    header .brand { font-weight: 700; letter-spacing: -0.01em; }
-    header a { color: var(--muted); text-decoration: none; font-size: 14px; }
-    header a:hover { color: var(--text); }
+    header .brand {
+      font-family: 'Archivo Black', 'Inter', sans-serif;
+      color: var(--header-text);
+      letter-spacing: -0.01em;
+      font-size: 18px;
+    }
+    header a { color: #cfcfcf; text-decoration: none; font-size: 14px; }
+    header a:hover { color: var(--accent); }
     main {
       max-width: 760px;
       margin: 0 auto;
@@ -60,29 +70,30 @@
       padding: 12px 20px;
       border-radius: 8px;
       font-size: 15px;
+      font-weight: 600;
       cursor: pointer;
     }
     button:hover { background: var(--accent-hover); }
     .row { display: flex; gap: 8px; }
     .row input { flex: 1; }
     .muted { color: var(--muted); font-size: 14px; }
-    .error { color: var(--accent); font-size: 14px; margin-top: 8px; }
+    .error { color: var(--accent-hover); font-size: 14px; margin-top: 8px; }
     a.result-link { display: block; text-decoration: none; color: inherit; }
     a.result-link .card:hover { border-color: var(--accent); }
     .name { font-weight: 600; font-size: 16px; }
-    .badge { display: inline-block; font-size: 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; margin-left: 8px; }
+    .badge { display: inline-block; font-size: 12px; color: var(--brand-pink); border: 1px solid var(--brand-pink); border-radius: 999px; padding: 2px 10px; margin-left: 8px; font-weight: 600; }
     table { width: 100%; border-collapse: collapse; }
     td, th { text-align: left; padding: 6px 0; font-size: 14px; vertical-align: top; }
     th { color: var(--muted); font-weight: 500; width: 140px; }
     .machine-card { margin-bottom: 12px; }
     .machine-title { font-weight: 600; margin-bottom: 6px; }
-    .trello-link { display: inline-block; margin-top: 10px; font-size: 14px; color: var(--accent); text-decoration: none; }
-    .trello-link:hover { text-decoration: underline; }
+    .trello-link { display: inline-block; margin-top: 10px; font-size: 14px; color: var(--accent); text-decoration: none; font-weight: 600; }
+    .trello-link:hover { text-decoration: underline; color: var(--accent-hover); }
   </style>
 </head>
 <body>
   <header>
-    <span class="brand">TSGC Registry</span>
+    <span class="brand">TSGC REGISTRY</span>
     {% if show_logout %}<a href="{{ url_for('logout') }}">Log out</a>{% endif %}
   </header>
   <main>
