@@ -9,16 +9,6 @@ same trello_card_id already exists.
 
 Usage:
     python import_trello.py <BOARD_ID> [<BOARD_ID_2> ...]
-
-Where BOARD_ID is the ID (not the short link) of each Trello board that
-holds Drop-Off and/or Hire cards — e.g. your main workflow board(s).
-Get a board's ID by opening it in Trello, adding ".json" to the URL,
-and reading the "id" field, or via https://api.trello.com/1/members/me/boards
-with your key/token.
-
-Requires the same env vars as app.py: TRELLO_KEY, TRELLO_TOKEN,
-DATABASE_URL. Run it from your machine or a Render shell — it does not
-touch the webhook.
 """
 
 import os
@@ -31,23 +21,19 @@ import db
 TRELLO_KEY = os.environ.get("TRELLO_KEY")
 TRELLO_TOKEN = os.environ.get("TRELLO_TOKEN")
 
-# Maps the emoji-prefixed lines app.py writes into card descriptions
-# back to field names. If a card's description doesn't match this
-# format (e.g. it was edited by hand in Trello), it's still imported
-# with whatever fields ARE found, and the rest are left blank.
 FIELD_PATTERNS = {
-    "full_name":        r"👤 Customer:\s*(.*)",
-    "phone":            r"📱 Phone:\s*(.*)",
-    "email":            r"📧 Email:\s*(.*)",
-    "business_name":    r"🏢 Business:\s*(.*)",
-    "machine":          r"🔧 Machine:\s*(.*)",
-    "model":            r"📋 Model:\s*(.*)",
-    "serial_number":    r"🔢 Serial:\s*(.*)",
-    "symptoms":         r"⚠️ Issue:\s*(.*)",
-    "accessories":      r"📦 Accessories:\s*(.*)",
-    "hire_date":        r"📅 Hire Date:\s*(.*)",
-    "return_date":      r"📅 Return Date:\s*(.*)",
-    "hire_charge":      r"💰 Hire Charge:\s*(.*)",
+    "full_name": r"👤 Customer:\s*(.*)",
+    "phone": r"📱 Phone:\s*(.*)",
+    "email": r"📧 Email:\s*(.*)",
+    "business_name": r"🏢 Business:\s*(.*)",
+    "machine": r"🔧 Machine:\s*(.*)",
+    "model": r"📋 Model:\s*(.*)",
+    "serial_number": r"🔢 Serial:\s*(.*)",
+    "symptoms": r"⚠️ Issue:\s*(.*)",
+    "accessories": r"📦 Accessories:\s*(.*)",
+    "hire_date": r"📅 Hire Date:\s*(.*)",
+    "return_date": r"📅 Return Date:\s*(.*)",
+    "hire_charge": r"💰 Hire Charge:\s*(.*)",
     "security_deposit": r"🔒 Security Deposit:\s*(.*)",
 }
 
@@ -62,11 +48,7 @@ def parse_description(desc):
 
 def fetch_cards(board_id):
     url = f"https://api.trello.com/1/boards/{board_id}/cards"
-    params = {
-        "key": TRELLO_KEY,
-        "token": TRELLO_TOKEN,
-        "fields": "id,name,desc,shortUrl,idList",
-    }
+    params = {"key": TRELLO_KEY, "token": TRELLO_TOKEN, "fields": "id,name,desc,shortUrl,idList"}
     resp = requests.get(url, params=params)
     resp.raise_for_status()
     return resp.json()
@@ -100,19 +82,42 @@ def import_board(board_id):
             full_name = fields.get("full_name") or card.get("name") or "Unknown"
             form_type = "hire" if (fields.get("hire_date") or fields.get("hire_charge")) else "dropoff"
 
-            customer_id = db.upsert_customer(
-                full_name,
-                fields.get("phone"),
-                fields.get("email"),
-                fields.get("business_name"),
-            )
-            db.insert_machine(customer_id, {
-                "form_type": form_type,
-                "machine": fields.get("machine"),
-                "model": fields.get("model"),
-                "serial_number": fields.get("serial_number"),
-                "symptoms": fields.get("symptoms"),
-                "hire_date": fields.get("hire_date"),
-                "return_date": fields.get("return_date"),
-                "hire_charge": fields.get("hire_charge"),
-                "security_deposit": fields.get("security_deposit"),
+            customer_id = db.upsert_customer(full_name, fields.get("phone"), fields.get("email"), fields.get("business_name"))
+
+            machine_fields = {}
+            machine_fields["form_type"] = form_type
+            machine_fields["machine"] = fields.get("machine")
+            machine_fields["model"] = fields.get("model")
+            machine_fields["serial_number"] = fields.get("serial_number")
+            machine_fields["symptoms"] = fields.get("symptoms")
+            machine_fields["hire_date"] = fields.get("hire_date")
+            machine_fields["return_date"] = fields.get("return_date")
+            machine_fields["hire_charge"] = fields.get("hire_charge")
+            machine_fields["security_deposit"] = fields.get("security_deposit")
+            machine_fields["accessories"] = fields.get("accessories")
+            machine_fields["trello_card_id"] = card_id
+            machine_fields["trello_card_url"] = card.get("shortUrl")
+            machine_fields["trello_list_id"] = card.get("idList")
+
+            db.insert_machine(customer_id, machine_fields)
+            imported += 1
+        except Exception as e:
+            errors += 1
+            print(f"  ERROR on card {card_id} ({card.get('name')}): {e}")
+
+    print(f"Board {board_id}: {imported} imported, {skipped} already present, {errors} errors.")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(1)
+
+    if not (TRELLO_KEY and TRELLO_TOKEN and os.environ.get("DATABASE_URL")):
+        print("Missing TRELLO_KEY, TRELLO_TOKEN, or DATABASE_URL in your environment.")
+        sys.exit(1)
+
+    for board_id in sys.argv[1:]:
+        import_board(board_id)
+
+    print("\nDone.")
