@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% set show_logout = true %}
+{% block title %}{{ customer.full_name }} — TSGC Registry{% endblock %}
+{% block content %}
+  <p><a href="{{ url_for('search') }}" class="muted">&larr; Back to search</a></p>
+
+  <div class="card">
+    <div class="name" style="font-size:20px; margin-bottom:12px;">{{ customer.full_name }}</div>
+    <table>
+      {% if customer.business_name %}<tr><th>Business</th><td>{{ customer.business_name }}</td></tr>{% endif %}
+      {% if customer.phone %}<tr><th>Phone</th><td>{{ customer.phone }}</td></tr>{% endif %}
+      {% if customer.email %}<tr><th>Email</th><td>{{ customer.email }}</td></tr>{% endif %}
+      <tr><th>Customer since</th><td>{{ customer.created_at.strftime('%d %b %Y') if customer.created_at else '' }}</td></tr>
+    </table>
+  </div>
+
+  <h3 style="margin-top:32px;">Machines &amp; entries ({{ customer.machines|length }})</h3>
+
+  {% for m in customer.machines %}
+    <div class="card machine-card">
+      <div class="machine-title">
+        {{ m.machine or 'Unknown machine' }} {{ m.model or '' }}
+        <span class="badge">{{ 'Hire' if m.form_type == 'hire' else 'Drop-Off' }}</span>
+      </div>
+      <table>
+        {% if m.serial_number %}<tr><th>Serial</th><td>{{ m.serial_number }}</td></tr>{% endif %}
+        {% if m.form_type == 'hire' %}
+          {% if m.hire_date %}<tr><th>Hire date</th><td>{{ m.hire_date }}</td></tr>{% endif %}
+          {% if m.return_date %}<tr><th>Return date</th><td>{{ m.return_date }}</td></tr>{% endif %}
+          {% if m.hire_charge %}<tr><th>Hire charge</th><td>{{ m.hire_charge }}</td></tr>{% endif %}
+          {% if m.security_deposit %}<tr><th>Deposit</th><td>{{ m.security_deposit }}</td></tr>{% endif %}
+          {% if m.accessories %}<tr><th>Accessories</th><td>{{ m.accessories }}</td></tr>{% endif %}
+        {% else %}
+          {% if m.symptoms %}<tr><th>Issue</th><td>{{ m.symptoms }}</td></tr>{% endif %}
+        {% endif %}
+        <tr><th>Logged</th><td>{{ m.created_at.strftime('%d %b %Y, %I:%M %p') if m.created_at else '' }}</td></tr>
+      </table>
+      {% if m.trello_card_url %}
+        <a class="trello-link" href="{{ m.trello_card_url }}" target="_blank" rel="noopener">Open Trello card &rarr;</a>
+      {% endif %}
+    </div>
+  {% else %}
+    <p class="muted">No machine entries on file for this customer yet.</p>
+  {% endfor %}
+{% endblock %}
