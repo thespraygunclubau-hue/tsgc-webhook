@@ -173,3 +173,28 @@ def get_customer_with_machines(customer_id):
             return customer
     finally:
         conn.close()
+
+
+
+def list_all_customers(limit=500):
+    """
+    Every customer, alphabetical by name, each with a machine_count —
+    used to show the full list below the search box before anyone types.
+    """
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                select c.*, count(m.id) as machine_count
+                from customers c
+                left join machines m on m.customer_id = c.id
+                group by c.id
+                order by c.full_name asc
+                limit %s
+                """,
+                (limit,),
+            )
+            return cur.fetchall()
+    finally:
+        conn.close()
