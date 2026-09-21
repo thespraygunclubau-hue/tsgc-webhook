@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% set show_logout = true %}
+{% block title %}Search — TSGC Registry{% endblock %}
+{% block content %}
+  <form method="get" class="row" style="margin-bottom: 24px;">
+    <input type="text" name="q" value="{{ query }}" placeholder="Search by name, phone, email, business, machine, model or serial…" autofocus>
+    <button type="submit">Search</button>
+  </form>
+
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+  {% if query and not results and not error %}
+    <p class="muted">No customers found for "{{ query }}".</p>
+  {% endif %}
+
+  {% for c in results %}
+    <a class="result-link" href="{{ url_for('customer_profile', customer_id=c.id) }}">
+      <div class="card">
+        <div class="name">
+          {{ c.full_name }}
+          <span class="badge">{{ c.machine_count }} entr{{ 'y' if c.machine_count == 1 else 'ies' }}</span>
+        </div>
+        <div class="muted">
+          {% if c.business_name %}{{ c.business_name }} · {% endif %}
+          {% if c.phone %}{{ c.phone }}{% endif %}
+          {% if c.phone and c.email %} · {% endif %}
+          {% if c.email %}{{ c.email }}{% endif %}
+        </div>
+      </div>
+    </a>
+  {% endfor %}
+
+  {% if not query %}
+    <p class="muted">Start typing to search the customer registry.</p>
+  {% endif %}
+{% endblock %}
