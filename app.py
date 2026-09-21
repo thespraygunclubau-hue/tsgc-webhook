@@ -161,7 +161,7 @@ def search():
     if not _logged_in():
         return redirect(url_for("login"))
 
-        query = request.args.get("q", "").strip()
+    query = request.args.get("q", "").strip()
     results = []
     error = None
     try:
