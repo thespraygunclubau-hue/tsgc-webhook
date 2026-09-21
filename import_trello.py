@@ -3,6 +3,11 @@ One-off backfill: pulls existing cards from your Trello board(s) and
 loads them into the registry database, so historical customers show up
 in search alongside new submissions.
 
+Reads structured fields from the card description when present (cards
+created by the webhook, with lines like "Machine:"), and falls back to
+parsing the card TITLE (e.g. "Drop-Off — Daniel DPM | Wagner PS3.25")
+for older cards created by hand in Trello that don't have that format.
+
 Safe to re-run: it upserts customers the same way the webhook does
 (matched by phone/email), and skips a machine entry if a row with the
 same trello_card_id already exists.
@@ -37,6 +42,8 @@ FIELD_PATTERNS = {
     "security_deposit": r"🔒 Security Deposit:\s*(.*)",
 }
 
+CARD_TITLE_RE = re.compile(r"^\s*(?:Drop-Off|Hire)\s*[—-]\s*(?P<customer>.+?)\s*\|\s*(?P<machine>.+?)\s*$")
+
 
 def parse_description(desc):
     fields = {}
@@ -44,6 +51,13 @@ def parse_description(desc):
         m = re.search(pattern, desc or "")
         fields[key] = m.group(1).strip() if m else ""
     return fields
+
+
+def parse_card_title(name):
+    m = CARD_TITLE_RE.match(name or "")
+    if m:
+        return m.group("customer").strip(), m.group("machine").strip()
+    return None, None
 
 
 def fetch_cards(board_id):
@@ -79,14 +93,18 @@ def import_board(board_id):
                 continue
 
             fields = parse_description(card.get("desc", ""))
-            full_name = fields.get("full_name") or card.get("name") or "Unknown"
+            title_customer, title_machine = parse_card_title(card.get("name", ""))
+
+            full_name = fields.get("full_name") or title_customer or card.get("name") or "Unknown"
+            machine_value = fields.get("machine") or title_machine or ""
+
             form_type = "hire" if (fields.get("hire_date") or fields.get("hire_charge")) else "dropoff"
 
             customer_id = db.upsert_customer(full_name, fields.get("phone"), fields.get("email"), fields.get("business_name"))
 
             machine_fields = {}
             machine_fields["form_type"] = form_type
-            machine_fields["machine"] = fields.get("machine")
+            machine_fields["machine"] = machine_value
             machine_fields["model"] = fields.get("model")
             machine_fields["serial_number"] = fields.get("serial_number")
             machine_fields["symptoms"] = fields.get("symptoms")
