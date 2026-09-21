@@ -4,9 +4,13 @@ import os
 import secrets
 import io
 import contextlib
+import hmac
+import hashlib
+import base64
 
 import db
 import import_trello
+import trello_sync
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
@@ -20,6 +24,14 @@ HIRE_LIST_ID = os.environ.get("HIRE_LIST_ID")
 
 REGISTRY_PASSWORD = os.environ.get("REGISTRY_PASSWORD")
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET")
+
+# For verifying that /trello-webhook requests really came from Trello.
+# TRELLO_API_SECRET is your Power-Up's API secret (trello.com/power-ups/admin).
+# TRELLO_WEBHOOK_URL must be exactly the callbackURL the webhook was
+# registered with. If either is unset, verification is skipped — the
+# endpoint still works, just unauthenticated.
+TRELLO_API_SECRET = os.environ.get("TRELLO_API_SECRET")
+TRELLO_WEBHOOK_URL = os.environ.get("TRELLO_WEBHOOK_URL")
 
 
 @app.route("/webhook", methods=["POST"])
@@ -130,6 +142,65 @@ def webhook():
 @app.route("/", methods=["GET"])
 def health():
     return jsonify({"status": "alive"}), 200
+
+
+# --------------------------------------------------------------------
+# Trello → database sync — real-time, for edits made directly in Trello
+# --------------------------------------------------------------------
+
+def _verify_trello_signature(req):
+    if not TRELLO_API_SECRET or not TRELLO_WEBHOOK_URL:
+        return True  # not configured yet — see setup_trello_webhook.py
+    signature = req.headers.get("X-Trello-Webhook")
+    if not signature:
+        return False
+    expected = base64.b64encode(
+        hmac.new(
+            TRELLO_API_SECRET.encode("utf-8"),
+            req.get_data() + TRELLO_WEBHOOK_URL.encode("utf-8"),
+            hashlib.sha1,
+        ).digest()
+    ).decode("utf-8")
+    return hmac.compare_digest(signature, expected)
+
+
+@app.route("/trello-webhook", methods=["HEAD", "GET", "POST"])
+def trello_webhook():
+    # Trello sends a HEAD request the moment the webhook is registered,
+    # just to confirm the URL is reachable — there's no body yet, and
+    # nothing to process.
+    if request.method in ("HEAD", "GET"):
+        return "", 200
+
+    if not _verify_trello_signature(request):
+        print("TRELLO WEBHOOK: signature check failed — ignoring request")
+        return jsonify({"status": "error", "detail": "invalid signature"}), 401
+
+    payload = request.json or {}
+    action = payload.get("action", {})
+    action_type = action.get("type")
+    card = (action.get("data") or {}).get("card") or {}
+    card_id = card.get("id")
+
+    if not card_id:
+        return jsonify({"status": "ignored"}), 200
+
+    try:
+        if action_type == "deleteCard":
+            deleted = trello_sync.delete_card(card_id)
+            print("TRELLO WEBHOOK: deleteCard", card_id, "removed rows:", deleted)
+        elif action_type in ("updateCard", "createCard", "copyCard"):
+            trello_sync.sync_card(card_id)
+            print("TRELLO WEBHOOK:", action_type, "synced card", card_id)
+        # other action types (comments, checklist ticks, member changes,
+        # etc.) don't affect registry fields, so they're ignored.
+    except Exception as e:
+        print("TRELLO WEBHOOK ERROR:", repr(e))
+        # Still return 200: Trello auto-disables a webhook after enough
+        # consecutive non-2xx responses, and a DB hiccup on our end
+        # shouldn't cost us the whole webhook registration.
+
+    return jsonify({"status": "ok"}), 200
 
 
 def _logged_in():
