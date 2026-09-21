@@ -13,6 +13,10 @@
     <p class="muted">No customers found for "{{ query }}".</p>
   {% endif %}
 
+  {% if results %}
+    <p class="muted">{% if query %}{{ results|length }} result{{ 's' if results|length != 1 else '' }}{% else %}All customers, A–Z ({{ results|length }}){% endif %}</p>
+  {% endif %}
+
   {% for c in results %}
     <a class="result-link" href="{{ url_for('customer_profile', customer_id=c.id) }}">
       <div class="card">
@@ -30,7 +34,7 @@
     </a>
   {% endfor %}
 
-  {% if not query %}
-    <p class="muted">Start typing to search the customer registry.</p>
+  {% if not query and not results %}
+    <p class="muted">No customers in the registry yet.</p>
   {% endif %}
 {% endblock %}
