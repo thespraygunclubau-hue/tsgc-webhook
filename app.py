@@ -161,15 +161,17 @@ def search():
     if not _logged_in():
         return redirect(url_for("login"))
 
-    query = request.args.get("q", "").strip()
+        query = request.args.get("q", "").strip()
     results = []
     error = None
-    if query:
-        try:
+    try:
+        if query:
             results = db.search_customers(query)
-        except Exception as e:
-            print("SEARCH ERROR:", repr(e))
-            error = "Search failed — check server logs."
+        else:
+            results = db.list_all_customers()
+    except Exception as e:
+        print("SEARCH ERROR:", repr(e))
+        error = "Search failed — check server logs."
 
     return render_template("search.html", query=query, results=results, error=error)
 
