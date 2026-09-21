@@ -4,11 +4,11 @@ database rows. Used by:
 
   - app.py's /trello-webhook route — real-time sync whenever a card is
     created, edited, moved, or deleted directly in Trello.
-  - import_trello.py — the one-off historical backfill.
+  - import_trello.py — the backfill (run from the command line or via
+    the /admin/import-trello endpoint).
 
 Keeping this in one place means both paths parse card descriptions and
-decide form_type the same way, so they can't drift out of sync with
-each other.
+titles the same way, so they can't drift out of sync with each other.
 """
 
 import os
@@ -22,10 +22,8 @@ TRELLO_TOKEN = os.environ.get("TRELLO_TOKEN")
 HIRE_LIST_ID = os.environ.get("HIRE_LIST_ID")
 DROPOFF_LIST_ID = os.environ.get("DROPOFF_LIST_ID")
 
-# Maps the emoji-prefixed lines app.py writes into card descriptions back
-# to field names. If a card's description doesn't match this format
-# (e.g. it was written by hand in Trello), it still syncs with whatever
-# fields ARE found, and the rest are left blank.
+# Maps the emoji-prefixed lines app.py writes into card descriptions
+# back to field names.
 FIELD_PATTERNS = {
     "full_name":        r"👤 Customer:\s*(.*)",
     "phone":            r"📱 Phone:\s*(.*)",
@@ -42,6 +40,10 @@ FIELD_PATTERNS = {
     "security_deposit": r"🔒 Security Deposit:\s*(.*)",
 }
 
+# Fallback for older cards created by hand in Trello, with no structured
+# description — e.g. "Drop-Off — Daniel DPM | Wagner PS3.25".
+CARD_TITLE_RE = re.compile(r"^\s*(?:Drop-Off|Hire)\s*[—-]\s*(?P<customer>.+?)\s*\|\s*(?P<machine>.+?)\s*$")
+
 
 def parse_description(desc):
     fields = {}
@@ -49,6 +51,13 @@ def parse_description(desc):
         m = re.search(pattern, desc or "")
         fields[key] = m.group(1).strip() if m else ""
     return fields
+
+
+def parse_card_title(name):
+    m = CARD_TITLE_RE.match(name or "")
+    if m:
+        return m.group("customer").strip(), m.group("machine").strip()
+    return None, None
 
 
 def fetch_card(card_id):
@@ -94,7 +103,10 @@ def sync_card(card_id, card=None):
         card = fetch_card(card_id)
 
     fields = parse_description(card.get("desc", ""))
-    full_name = fields.get("full_name") or card.get("name") or "Unknown"
+    title_customer, title_machine = parse_card_title(card.get("name", ""))
+
+    full_name = fields.get("full_name") or title_customer or card.get("name") or "Unknown"
+    machine_value = fields.get("machine") or title_machine or ""
     list_id = card.get("idList")
     form_type = form_type_for_list(list_id, fields)
 
@@ -107,7 +119,7 @@ def sync_card(card_id, card=None):
 
     machine_fields = {
         "form_type": form_type,
-        "machine": fields.get("machine"),
+        "machine": machine_value,
         "model": fields.get("model"),
         "serial_number": fields.get("serial_number"),
         "symptoms": fields.get("symptoms"),
