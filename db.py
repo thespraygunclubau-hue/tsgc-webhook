@@ -107,6 +107,81 @@ def insert_machine(customer_id, fields):
         conn.close()
 
 
+def get_machine_by_trello_card_id(trello_card_id):
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("select * from machines where trello_card_id = %s", (trello_card_id,))
+            return cur.fetchone()
+    finally:
+        conn.close()
+
+
+def upsert_machine_by_card(customer_id, fields):
+    """
+    Used by the Trello webhook sync (and now the backfill import too).
+    Updates the machine row matching fields['trello_card_id'] if one
+    already exists — re-linking it to customer_id, which may have
+    changed if the card's phone/email was edited — otherwise inserts a
+    new row (a card created by hand in Trello, never seen before).
+    Returns the machine id (str).
+    """
+    trello_card_id = fields["trello_card_id"]
+    existing = get_machine_by_trello_card_id(trello_card_id)
+
+    columns = [
+        "form_type", "machine", "model", "serial_number", "symptoms",
+        "hire_date", "return_date", "hire_charge", "security_deposit",
+        "accessories", "trello_card_url", "trello_list_id",
+    ]
+    values = [fields.get(c) for c in columns]
+
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            if existing:
+                set_clause = ", ".join(f"{c} = %s" for c in columns)
+                cur.execute(
+                    f"""
+                    update machines
+                    set customer_id = %s, {set_clause}
+                    where trello_card_id = %s
+                    returning id
+                    """,
+                    [customer_id] + values + [trello_card_id],
+                )
+            else:
+                all_columns = columns + ["trello_card_id"]
+                placeholders = ", ".join(["%s"] * len(all_columns))
+                col_list = ", ".join(all_columns)
+                cur.execute(
+                    f"""
+                    insert into machines (customer_id, {col_list})
+                    values (%s, {placeholders})
+                    returning id
+                    """,
+                    [customer_id] + values + [trello_card_id],
+                )
+            new_id = cur.fetchone()[0]
+            conn.commit()
+            return str(new_id)
+    finally:
+        conn.close()
+
+
+def delete_machine_by_trello_card_id(trello_card_id):
+    """Returns the number of rows deleted (0 or 1)."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("delete from machines where trello_card_id = %s", (trello_card_id,))
+            deleted = cur.rowcount
+            conn.commit()
+            return deleted
+    finally:
+        conn.close()
+
+
 def search_customers(query, limit=50):
     query = f"%{query.strip()}%"
     conn = get_conn()
