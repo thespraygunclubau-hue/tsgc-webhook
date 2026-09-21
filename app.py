@@ -2,8 +2,11 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for, s
 import requests
 import os
 import secrets
+import io
+import contextlib
 
 import db
+import import_trello
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
@@ -15,10 +18,8 @@ HIRE_TEMPLATE_ID = os.environ.get("HIRE_TEMPLATE_ID")
 DROPOFF_LIST_ID = os.environ.get("DROPOFF_LIST_ID")
 HIRE_LIST_ID = os.environ.get("HIRE_LIST_ID")
 
-# Shared password for the internal search page. Set REGISTRY_PASSWORD in
-# Render's env vars. If it's not set, the search page refuses to load
-# rather than sitting open with no protection.
 REGISTRY_PASSWORD = os.environ.get("REGISTRY_PASSWORD")
+ADMIN_SECRET = os.environ.get("ADMIN_SECRET")
 
 
 @app.route("/webhook", methods=["POST"])
@@ -26,7 +27,7 @@ def webhook():
     data = request.json or {}
     print("INCOMING DATA:", data)
 
-    custom = data.get("customData", {})  # everything GHL sends lives in here
+    custom = data.get("customData", {})
 
     form_type = custom.get("form_type", "dropoff")
     customer_name = custom.get("full_name", "Unknown")
@@ -38,8 +39,6 @@ def webhook():
     serial_number = custom.get("serial_number", "")
     symptoms = custom.get("symptoms", "")
 
-    # Hire-specific fields (only populated once you add a matching
-    # webhook action on the Hire form workflow — see note below)
     hire_date = custom.get("hire_date", "")
     return_date = custom.get("return_date", "")
     hire_charge = custom.get("hire_charge", "")
@@ -105,10 +104,6 @@ def webhook():
     update_response = requests.put(f"https://api.trello.com/1/cards/{card_id}", params=update_params)
     print("TRELLO UPDATE STATUS:", update_response.status_code, update_response.text)
 
-    # --- Save to the registry database (customer + machine entry) -------
-    # This runs after the Trello card is created so a DB hiccup never
-    # blocks the card itself. If it fails, we log it and still return
-    # success for the Trello part — check Render logs for "DB ERROR".
     try:
         customer_id = db.upsert_customer(customer_name, phone, email, business_name)
         db.insert_machine(customer_id, {
@@ -136,10 +131,6 @@ def webhook():
 def health():
     return jsonify({"status": "alive"}), 200
 
-
-# --------------------------------------------------------------------
-# Internal search UI — customer & machine registry
-# --------------------------------------------------------------------
 
 def _logged_in():
     return session.get("logged_in") is True
@@ -198,6 +189,25 @@ def customer_profile(customer_id):
         return "Customer not found.", 404
 
     return render_template("customer.html", customer=customer)
+
+
+@app.route("/admin/import-trello", methods=["GET"])
+def admin_import_trello():
+    if not ADMIN_SECRET or request.args.get("secret") != ADMIN_SECRET:
+        return "Not authorized.", 403
+
+    board_id = request.args.get("board_id")
+    if not board_id:
+        return "Missing ?board_id= parameter.", 400
+
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            import_trello.import_board(board_id)
+    except Exception as e:
+        return f"<pre>{buf.getvalue()}\n\nERROR: {e}</pre>", 500
+
+    return f"<pre>{buf.getvalue()}</pre>"
 
 
 if __name__ == "__main__":
