@@ -15,6 +15,13 @@
   .bd-flash { background: #e8f5ec; color: #1d5c32; border: 1px solid #bfe3cb; border-radius: 8px; padding: 10px 14px; font-size: 14px; margin-bottom: 14px; }
   .bd-flash.err { background: #fdecea; color: #8c1d18; border-color: #f5c2bd; }
   .md .bd-flash { margin: 0 44px 16px 0; }
+  .bd-pull { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; margin: 0; }
+  .bd-pull span { font-size: 12px; color: var(--muted); }
+  .btn-pull { background: var(--card); color: var(--text); border: 1px solid var(--border); padding: 10px 16px; font-size: 14px; }
+  .btn-pull:hover { background: var(--card); border-color: var(--text); }
+  .pbar { height: 6px; background: #cfe9d7; border-radius: 99px; margin-top: 8px; overflow: hidden; }
+  .pbar div { height: 100%; width: 0; background: #1d5c32; transition: width .4s; }
+  @media (max-width: 600px) { .bd-pull { align-items: flex-start; } }
 
   .bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
   .cc { display: flex; flex-direction: column; text-align: left; background: var(--card); border: 1px solid var(--border); border-radius: 12px;
@@ -61,6 +68,18 @@
       <h1 class="bd-title">Customers</h1>
       <div class="bd-count" id="count">{{ customers|length }} customer{{ '' if customers|length == 1 else 's' }}</div>
     </div>
+    {% if missing_address and not pull.running %}
+      <form method="post" action="{{ url_for('ghl_pull_addresses') }}" class="bd-pull"
+            data-confirm="Look up addresses in GHL for the {{ missing_address }} customer{{ '' if missing_address == 1 else 's' }} without one?&#10;&#10;Only blank addresses are filled in — nothing already in the app is changed.">
+        <button type="submit" class="btn-pull">Pull addresses from GHL</button>
+        <span>{{ missing_address }} customer{{ '' if missing_address == 1 else 's' }} without an address</span>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="bd-flash" id="pull-box" {% if not pull.running %}hidden{% endif %}>
+    <div id="pull-text">Pulling addresses from GHL…</div>
+    <div class="pbar"><div id="pull-bar"></div></div>
   </div>
 
   {% if flash_msg and not open_id %}<div class="bd-flash">{{ flash_msg }}</div>{% endif %}
@@ -188,6 +207,36 @@
   if (startId) {
     lastCard = document.querySelector('.cc[data-id="' + CSS.escape(startId) + '"]');
     open(startId);
+  }
+  // ---- GHL address pull progress ----
+  var pullBox = document.getElementById('pull-box');
+  if (!pullBox.hidden) {
+    var pullText = document.getElementById('pull-text');
+    var pullBar = document.getElementById('pull-bar');
+    var poll = function () {
+      fetch('/ghl/pull-status', { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (st) {
+          var pct = st.total ? Math.round(100 * st.done / st.total) : 0;
+          pullBar.style.width = pct + '%';
+          pullText.textContent = st.running
+            ? 'Pulling addresses from GHL… ' + st.done + ' of ' + st.total + ' checked, ' + st.filled + ' found.'
+            : (st.message || ('Done — ' + st.filled + ' address' + (st.filled === 1 ? '' : 'es') + ' added, ' +
+                st.not_found + ' not found in GHL' + (st.errors ? ', ' + st.errors + ' errors' : '') + '.'));
+          if (st.running) { setTimeout(poll, 2000); }
+          else if (!st.message) {
+            pullText.textContent += ' Refreshing…';
+            setTimeout(function () {
+              var u = new URL(window.location.href);
+              u.searchParams.set('msg', 'Done — ' + st.filled + ' address' + (st.filled === 1 ? '' : 'es') +
+                ' added from GHL, ' + st.not_found + ' not found.');
+              window.location.href = u.toString();
+            }, 1200);
+          } else { pullBox.classList.add('err'); }
+        })
+        .catch(function () { setTimeout(poll, 4000); });
+    };
+    poll();
   }
 })();
 </script>

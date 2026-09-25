@@ -12,6 +12,7 @@ import db
 import import_trello
 import trello_sync
 import prefill
+import ghl
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
@@ -61,14 +62,30 @@ def webhook():
     serial_number = custom.get("serial_number", "")
     symptoms = custom.get("symptoms", "")
 
-    # Address — sent from GHL as address1 / city / state / postal_code
-    # (a single "address" line also works).
+    # Address — from Custom Data if you've mapped it there, otherwise from
+    # the standard contact fields GHL includes with every webhook, and as a
+    # last resort looked up in GHL directly (needs GHL_API_TOKEN).
+    def _pick(*keys):
+        for src in (custom, data):
+            for k in keys:
+                v = src.get(k)
+                if isinstance(v, str) and v.strip():
+                    return v.strip()
+        return ""
+
     address = {
-        "address1": custom.get("address1", "") or custom.get("address", ""),
-        "city": custom.get("city", ""),
-        "state": custom.get("state", ""),
-        "postal_code": custom.get("postal_code", "") or custom.get("postcode", ""),
+        "address1": _pick("address1", "address"),
+        "city": _pick("city"),
+        "state": _pick("state"),
+        "postal_code": _pick("postal_code", "postcode", "postalCode"),
     }
+    if not any(address.values()) and ghl.configured():
+        try:
+            found = ghl.lookup_address(email, phone, contact_id=data.get("contact_id"))
+            if found:
+                address = found
+        except Exception as e:
+            print("GHL ADDRESS LOOKUP ERROR:", repr(e))
     address_line = ", ".join(
         v.strip() for v in (address["address1"], address["city"],
                             " ".join(x for x in (address["state"], address["postal_code"]) if x.strip()))
@@ -262,8 +279,13 @@ def board():
 
     customers = []
     error = None
+    missing_address = 0
     try:
         customers = db.list_board_customers()
+        missing_address = sum(
+            1 for c in customers
+            if not any(c.get(k) for k in db.ADDRESS_FIELDS) and (c.get("phone") or c.get("email"))
+        )
     except Exception as e:
         print("BOARD ERROR:", repr(e))
         error = "Couldn't load customers — check server logs."
@@ -276,6 +298,9 @@ def board():
         open_id=request.args.get("open", ""),
         flash_msg=request.args.get("msg", ""),
         flash_err=request.args.get("err", ""),
+        missing_address=missing_address,
+        ghl_ready=ghl.configured(),
+        pull=ghl.status(),
     )
 
 
@@ -355,6 +380,22 @@ def edit_entry(machine_id):
     if not customer_id:
         return redirect(url_for("board", err="That entry no longer exists."))
     return redirect(url_for("board", open=customer_id, msg="Entry saved."))
+
+
+@app.route("/ghl/pull-addresses", methods=["POST"])
+def ghl_pull_addresses():
+    """Board button: fill in addresses from GHL for customers missing one."""
+    if not _logged_in():
+        return redirect(url_for("login"))
+    started, message = ghl.start_pull()
+    return redirect(url_for("board") if started else url_for("board", err=message))
+
+
+@app.route("/ghl/pull-status", methods=["GET"])
+def ghl_pull_status():
+    if not _logged_in():
+        return jsonify({"error": "login"}), 401
+    return jsonify(ghl.status())
 
 
 @app.route("/customer/<customer_id>/delete", methods=["POST"])

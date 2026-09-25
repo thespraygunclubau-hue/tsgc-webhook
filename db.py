@@ -553,3 +553,58 @@ def update_machine(machine_id, fields):
             return str(row[0]) if row else None
     finally:
         conn.close()
+
+
+# --------------------------------------------------------------------
+# Address backfill from GHL
+# --------------------------------------------------------------------
+
+def list_customers_missing_address():
+    """Customers with no address at all (and an email or phone to look
+    them up by). Templates skipped."""
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                select id, full_name, phone, email from customers
+                where full_name not ilike 'template%%'
+                  and coalesce(address1, '') = '' and coalesce(city, '') = ''
+                  and coalesce(state, '') = '' and coalesce(postal_code, '') = ''
+                  and (coalesce(phone, '') <> '' or coalesce(email, '') <> '')
+                order by full_name
+                """
+            )
+            return cur.fetchall()
+    finally:
+        conn.close()
+
+
+def count_customers_missing_address():
+    return len(list_customers_missing_address())
+
+
+def fill_address(customer_id, address):
+    """Sets the address only if the customer still has none — never
+    overwrites an address someone has since typed in."""
+    addr = _clean_address(address)
+    if not addr:
+        return False
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update customers
+                set address1 = %s, city = %s, state = %s, postal_code = %s, updated_at = now()
+                where id = %s
+                  and coalesce(address1, '') = '' and coalesce(city, '') = ''
+                  and coalesce(state, '') = '' and coalesce(postal_code, '') = ''
+                """,
+                (addr["address1"], addr["city"], addr["state"], addr["postal_code"], customer_id),
+            )
+            done = cur.rowcount > 0
+            conn.commit()
+            return done
+    finally:
+        conn.close()
