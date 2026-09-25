@@ -43,6 +43,7 @@
   .md { background: var(--bg); border-radius: 14px; width: 100%; max-width: 720px; position: relative; box-shadow: 0 20px 60px rgba(0,0,0,.35); padding: 28px; }
   .md-x { position: absolute; top: 14px; right: 14px; width: 36px; height: 36px; border-radius: 50%; background: var(--card); color: var(--text); border: 1px solid var(--border); font-size: 20px; line-height: 1; padding: 0; display: flex; align-items: center; justify-content: center; }
   .md-x:hover { background: var(--card); border-color: var(--text); }
+  .md .cd-head { padding-right: 44px; }
   .md-loading { color: var(--muted); padding: 40px 0; text-align: center; }
   body.no-scroll { overflow: hidden; }
   @media (max-width: 600px) {
@@ -68,14 +69,14 @@
 
   <div class="bd-search">
     <input type="text" id="q" value="{{ query }}" autocomplete="off"
-           placeholder="Search name, phone, email, business, machine, model or serial…" aria-label="Search customers">
+           placeholder="Search name, phone, email, business, address, machine, model or serial…" aria-label="Search customers">
   </div>
 
   <div class="bd-grid" id="grid">
     {% for c in customers %}
       {% set t = c.latest_type if c.service_count else 'none' %}
       <button type="button" class="cc t-{{ t }}" data-id="{{ c.id }}"
-              data-s="{{ [c.full_name, c.phone, c.email, c.business_name]|select|join(' ')|lower }} {{ c.machine_text }}">
+              data-s="{{ [c.full_name, c.phone, c.email, c.business_name, c.address1, c.city, c.state, c.postal_code]|select|join(' ')|lower }} {{ c.machine_text }}">
         <div class="cc-name">{{ c.full_name }}</div>
         {% if c.business_name %}<div class="cc-biz">{{ c.business_name }}</div>{% endif %}
         {% if c.phone %}<div class="cc-phone">{{ c.phone }}</div>{% endif %}

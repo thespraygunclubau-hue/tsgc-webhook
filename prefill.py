@@ -38,6 +38,10 @@ DEFAULT_KEYS = {
     "phone":         ["phone"],
     "email":         ["email"],
     "business_name": ["organization", "company_name", "business_name"],
+    "address1":      ["address", "address1"],
+    "city":          ["city"],
+    "state":         ["state"],
+    "postal_code":   ["postal_code"],
     "machine":       ["machine"],
     "model":         ["model"],
     "serial_number": ["serial_number"],
@@ -65,7 +69,8 @@ KEYS = _load_keys()
 def build_url(form_type, customer, machine=None):
     """
     form_type: 'dropoff' or 'hire'
-    customer:  dict with full_name / phone / email / business_name
+    customer:  dict with full_name / phone / email / business_name and
+               address1 / city / state / postal_code
     machine:   optional dict with machine / model / serial_number
                (given for "Book Again" on a specific service entry)
     """
@@ -80,6 +85,10 @@ def build_url(form_type, customer, machine=None):
         "phone": customer.get("phone") or "",
         "email": customer.get("email") or "",
         "business_name": customer.get("business_name") or "",
+        "address1": customer.get("address1") or "",
+        "city": customer.get("city") or "",
+        "state": customer.get("state") or "",
+        "postal_code": customer.get("postal_code") or "",
     }
     if machine:
         values["machine"] = machine.get("machine") or ""

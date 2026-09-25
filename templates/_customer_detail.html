@@ -7,6 +7,7 @@
   .cd-biz { color: var(--muted); font-size: 15px; margin-top: 4px; }
   .cd-contact { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 18px 0 20px; }
   .cd-contact div { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+  .cd-contact .wide { grid-column: 1 / -1; }
   .cd-contact span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 3px; }
   .cd-contact a, .cd-contact b { color: var(--text); font-weight: 600; font-size: 14px; text-decoration: none; overflow-wrap: anywhere; }
   .cd-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 26px; }
@@ -75,6 +76,8 @@
     <div><span>Phone</span>{% if customer.phone %}<a href="tel:{{ customer.phone }}">{{ customer.phone }}</a>{% else %}<b>—</b>{% endif %}</div>
     <div><span>Email</span>{% if customer.email %}<a href="mailto:{{ customer.email }}">{{ customer.email }}</a>{% else %}<b>—</b>{% endif %}</div>
     <div><span>Customer since</span><b>{{ customer.created_at.strftime('%d %b %Y') if customer.created_at else '—' }}</b></div>
+    {% set addr_line = [customer.address1, customer.city, [customer.state, customer.postal_code]|select|join(' ')]|select|join(', ') %}
+    <div class="wide"><span>Address</span>{% if addr_line %}<a href="https://www.google.com/maps/search/?api=1&query={{ addr_line|urlencode }}" target="_blank" rel="noopener">{{ addr_line }}</a>{% else %}<b>—</b>{% endif %}</div>
   </div>
   </div>
 
@@ -84,6 +87,10 @@
       <label>Business<input type="text" name="business_name" value="{{ customer.business_name or '' }}"></label>
       <label>Phone<input type="text" name="phone" value="{{ customer.phone or '' }}"></label>
       <label class="full">Email<input type="text" name="email" value="{{ customer.email or '' }}"></label>
+      <label class="full">Street address<input type="text" name="address1" value="{{ customer.address1 or '' }}"></label>
+      <label>Suburb / City<input type="text" name="city" value="{{ customer.city or '' }}"></label>
+      <label>State<input type="text" name="state" value="{{ customer.state or '' }}"></label>
+      <label>Postcode<input type="text" name="postal_code" value="{{ customer.postal_code or '' }}"></label>
     </div>
     <div class="ed-btns">
       <button type="submit" class="btn btn-primary btn-sm">Save</button>

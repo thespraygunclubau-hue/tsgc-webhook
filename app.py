@@ -61,6 +61,20 @@ def webhook():
     serial_number = custom.get("serial_number", "")
     symptoms = custom.get("symptoms", "")
 
+    # Address — sent from GHL as address1 / city / state / postal_code
+    # (a single "address" line also works).
+    address = {
+        "address1": custom.get("address1", "") or custom.get("address", ""),
+        "city": custom.get("city", ""),
+        "state": custom.get("state", ""),
+        "postal_code": custom.get("postal_code", "") or custom.get("postcode", ""),
+    }
+    address_line = ", ".join(
+        v.strip() for v in (address["address1"], address["city"],
+                            " ".join(x for x in (address["state"], address["postal_code"]) if x.strip()))
+        if v and v.strip()
+    )
+
     hire_date = custom.get("hire_date", "")
     return_date = custom.get("return_date", "")
     hire_charge = custom.get("hire_charge", "")
@@ -72,6 +86,7 @@ def webhook():
 📱 Phone: {phone}
 📧 Email: {email}
 🏢 Business: {business_name}
+📍 Address: {address_line}
 🔧 Machine: {machine}
 📋 Model: {model}
 🔢 Serial: {serial_number}
@@ -88,6 +103,7 @@ def webhook():
 📱 Phone: {phone}
 📧 Email: {email}
 🏢 Business: {business_name}
+📍 Address: {address_line}
 🔧 Machine: {machine}
 📋 Model: {model}
 🔢 Serial: {serial_number}
@@ -129,7 +145,7 @@ def webhook():
     try:
         if db.is_template_name(customer_name):
             raise ValueError("template entry — not saved to registry")
-        customer_id = db.upsert_customer(customer_name, phone, email, business_name)
+        customer_id = db.upsert_customer(customer_name, phone, email, business_name, address)
         db.insert_machine(customer_id, {
             "form_type": form_type,
             "machine": machine,
@@ -316,7 +332,8 @@ def edit_customer(customer_id):
     f = request.form
     try:
         db.update_customer(customer_id, f.get("full_name"), f.get("phone"),
-                           f.get("email"), f.get("business_name"))
+                           f.get("email"), f.get("business_name"),
+                           {k: f.get(k) for k in db.ADDRESS_FIELDS})
     except ValueError as e:  # includes DuplicateContact
         return redirect(url_for("board", open=customer_id, err=str(e)))
     except Exception as e:

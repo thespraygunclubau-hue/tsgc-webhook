@@ -38,6 +38,7 @@ def _ensure_schema(conn):
                            app, so the Trello sync doesn't bring them back.
       customers.edited_at  set when a customer / entry is edited in the
       machines.edited_at   app, so the Trello sync doesn't overwrite it.
+      customers.address1 / city / state / postal_code   customer address.
     """
     global _schema_ready
     if _schema_ready:
@@ -62,6 +63,10 @@ def _run_schema_additions(conn):
             );
             alter table customers add column if not exists edited_at timestamptz;
             alter table machines add column if not exists edited_at timestamptz;
+            alter table customers add column if not exists address1 text;
+            alter table customers add column if not exists city text;
+            alter table customers add column if not exists state text;
+            alter table customers add column if not exists postal_code text;
             """
         )
     conn.commit()
@@ -147,11 +152,24 @@ def delete_customer(customer_id):
         conn.close()
 
 
-def upsert_customer(full_name, phone, email, business_name):
+ADDRESS_FIELDS = ["address1", "city", "state", "postal_code"]
+
+
+def _clean_address(address):
+    """address: dict with any of address1 / city / state / postal_code.
+    Returns a cleaned dict, or None if every part is blank."""
+    if not address:
+        return None
+    cleaned = {k: _clean(address.get(k)) for k in ADDRESS_FIELDS}
+    return cleaned if any(cleaned.values()) else None
+
+
+def upsert_customer(full_name, phone, email, business_name, address=None):
     phone = _clean(phone)
     email = _clean(email)
     full_name = _clean(full_name) or "Unknown"
     business_name = _clean(business_name)
+    address = _clean_address(address)
 
     conn = get_conn()
     try:
@@ -164,45 +182,50 @@ def upsert_customer(full_name, phone, email, business_name):
                 cur.execute("select * from customers where email = %s", (email,))
                 existing = cur.fetchone()
 
-            if existing and existing.get("edited_at"):
-                # Edited by staff in the app — keep their version and only
-                # fill in anything that's still blank.
-                cur.execute(
-                    """
-                    update customers
-                    set phone = coalesce(phone, %s), email = coalesce(email, %s),
-                        business_name = coalesce(business_name, %s), updated_at = now()
-                    where id = %s
-                    """,
-                    (phone, email, business_name, existing["id"]),
-                )
-                conn.commit()
-                return str(existing["id"])
-
             if existing:
-                new_phone = phone or existing["phone"]
-                new_email = email or existing["email"]
-                new_business = business_name or existing["business_name"]
-                new_name = full_name if full_name != "Unknown" else existing["full_name"]
+                has_address = any(existing.get(k) for k in ADDRESS_FIELDS)
+                if existing.get("edited_at"):
+                    # Edited by staff in the app — keep their version and
+                    # only fill in anything that's still blank.
+                    new_phone = existing["phone"] or phone
+                    new_email = existing["email"] or email
+                    new_business = existing["business_name"] or business_name
+                    new_name = existing["full_name"]
+                    use_address = address if (address and not has_address) else None
+                else:
+                    new_phone = phone or existing["phone"]
+                    new_email = email or existing["email"]
+                    new_business = business_name or existing["business_name"]
+                    new_name = full_name if full_name != "Unknown" else existing["full_name"]
+                    # A newly submitted address replaces the old one as a set.
+                    use_address = address
+
+                addr = use_address or {k: existing.get(k) for k in ADDRESS_FIELDS}
                 cur.execute(
                     """
                     update customers
-                    set full_name = %s, phone = %s, email = %s,
-                        business_name = %s, updated_at = now()
+                    set full_name = %s, phone = %s, email = %s, business_name = %s,
+                        address1 = %s, city = %s, state = %s, postal_code = %s,
+                        updated_at = now()
                     where id = %s
                     """,
-                    (new_name, new_phone, new_email, new_business, existing["id"]),
+                    (new_name, new_phone, new_email, new_business,
+                     addr["address1"], addr["city"], addr["state"], addr["postal_code"],
+                     existing["id"]),
                 )
                 conn.commit()
                 return str(existing["id"])
 
+            addr = address or {k: None for k in ADDRESS_FIELDS}
             cur.execute(
                 """
-                insert into customers (full_name, phone, email, business_name)
-                values (%s, %s, %s, %s)
+                insert into customers (full_name, phone, email, business_name,
+                                       address1, city, state, postal_code)
+                values (%s, %s, %s, %s, %s, %s, %s, %s)
                 returning id
                 """,
-                (full_name, phone, email, business_name),
+                (full_name, phone, email, business_name,
+                 addr["address1"], addr["city"], addr["state"], addr["postal_code"]),
             )
             new_id = cur.fetchone()["id"]
             conn.commit()
@@ -342,6 +365,7 @@ def search_customers(query, limit=50):
                    or c.phone ilike %s
                    or c.email ilike %s
                    or c.business_name ilike %s
+                   or concat_ws(' ', c.address1, c.city, c.state, c.postal_code) ilike %s
                    or exists (
                         select 1 from machines m2
                         where m2.customer_id = c.id
@@ -351,7 +375,7 @@ def search_customers(query, limit=50):
                 order by c.full_name asc
                 limit %s
                 """,
-                (query, query, query, query, query, query, query, limit),
+                (query, query, query, query, query, query, query, query, limit),
             )
             return cur.fetchall()
     finally:
@@ -416,6 +440,7 @@ def list_board_customers(limit=5000):
             cur.execute(
                 """
                 select c.id, c.full_name, c.phone, c.email, c.business_name, c.created_at,
+                       c.address1, c.city, c.state, c.postal_code,
                        count(m.id) as service_count,
                        max(m.created_at) as last_service_at,
                        (select m3.form_type from machines m3
@@ -459,7 +484,8 @@ def get_customer(customer_id):
         conn.close()
 
 
-def update_customer(customer_id, full_name, phone, email, business_name):
+def update_customer(customer_id, full_name, phone, email, business_name, address=None):
+    addr = {k: _clean((address or {}).get(k)) for k in ADDRESS_FIELDS}
     full_name = _clean(full_name)
     if not full_name:
         raise ValueError("Name can't be empty.")
@@ -483,10 +509,13 @@ def update_customer(customer_id, full_name, phone, email, business_name):
                 """
                 update customers
                 set full_name = %s, phone = %s, email = %s, business_name = %s,
+                    address1 = %s, city = %s, state = %s, postal_code = %s,
                     updated_at = now(), edited_at = now()
                 where id = %s
                 """,
-                (full_name, phone, email, business_name, customer_id),
+                (full_name, phone, email, business_name,
+                 addr["address1"], addr["city"], addr["state"], addr["postal_code"],
+                 customer_id),
             )
             updated = cur.rowcount > 0
             conn.commit()
