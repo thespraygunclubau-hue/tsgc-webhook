@@ -55,7 +55,7 @@ def _ensure_schema(conn):
 
 # A value that is really another field's label ("🔧 Machine: SGC1" stored
 # as a business name) — left behind by an old Trello-reading bug.
-_LABEL_SQL = r"^\W*(customer|phone|email|business|address|machine|model|serial|issue|accessories|hire date|return date|hire charge|security deposit)\s*:"
+_LABEL_SQL = r"^\W*(customer|phone|email|business|address|machine|brand|model|serial|job type|issue|accessories|hire date|return date|hire charge|security deposit)\s*:"
 
 
 def _run_schema_additions(conn):
@@ -72,6 +72,7 @@ def _run_schema_additions(conn):
             alter table customers add column if not exists city text;
             alter table customers add column if not exists state text;
             alter table customers add column if not exists postal_code text;
+            alter table machines add column if not exists job_type text;
             create table if not exists ghl_pull_status (
                 id int primary key,
                 data jsonb not null,
@@ -93,6 +94,7 @@ def _run_schema_additions(conn):
             update machines set return_date = null where return_date ~* %(label)s;
             update machines set hire_charge = null where hire_charge ~* %(label)s;
             update machines set security_deposit = null where security_deposit ~* %(label)s;
+            update machines set job_type = null where job_type ~* %(label)s;
             """,
             {"label": _LABEL_SQL},
         )
@@ -265,7 +267,7 @@ def insert_machine(customer_id, fields):
     columns = [
         "form_type", "machine", "model", "serial_number", "symptoms",
         "hire_date", "return_date", "hire_charge", "security_deposit",
-        "accessories", "trello_card_id", "trello_card_url", "trello_list_id",
+        "accessories", "job_type", "trello_card_id", "trello_card_url", "trello_list_id",
     ]
     values = [fields.get(c) for c in columns]
 
@@ -314,7 +316,7 @@ def upsert_machine_by_card(customer_id, fields):
     columns = [
         "form_type", "machine", "model", "serial_number", "symptoms",
         "hire_date", "return_date", "hire_charge", "security_deposit",
-        "accessories", "trello_card_url", "trello_list_id",
+        "accessories", "job_type", "trello_card_url", "trello_list_id",
     ]
     values = [fields.get(c) for c in columns]
 
@@ -556,6 +558,7 @@ def update_customer(customer_id, full_name, phone, email, business_name, address
 EDITABLE_MACHINE_FIELDS = [
     "form_type", "machine", "model", "serial_number", "symptoms",
     "hire_date", "return_date", "hire_charge", "security_deposit", "accessories",
+    "job_type",
 ]
 
 

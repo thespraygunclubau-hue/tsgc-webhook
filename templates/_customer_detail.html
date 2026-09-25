@@ -124,7 +124,8 @@
                          ('Hire date', m.hire_date), ('Return date', m.return_date), ('Hire charge', m.hire_charge),
                          ('Security deposit', m.security_deposit), ('Accessories', m.accessories)] %}
         {% else %}
-          {% set rows = [('Machine', m.machine), ('Model', m.model), ('Serial', m.serial_number), ('Issue', m.symptoms)] %}
+          {% set rows = [('Brand', m.machine), ('Model', m.model), ('Serial', m.serial_number),
+                         ('Job type', m.job_type), ('Issue', m.symptoms)] %}
         {% endif %}
         <dl class="tl-fields">
           {% for label, value in rows %}
@@ -155,6 +156,7 @@
             <label>Machine<input type="text" name="machine" value="{{ m.machine or '' }}"></label>
             <label>Model<input type="text" name="model" value="{{ m.model or '' }}"></label>
             <label class="full">Serial number<input type="text" name="serial_number" value="{{ m.serial_number or '' }}"></label>
+            <label class="full f-dropoff" {{ 'hidden' if is_hire }}>Job type<input type="text" name="job_type" value="{{ m.job_type or '' }}"></label>
             <label class="full f-dropoff" {{ 'hidden' if is_hire }}>Issue<textarea name="symptoms">{{ m.symptoms or '' }}</textarea></label>
             <label class="f-hire" {{ 'hidden' if not is_hire }}>Hire date<input type="text" name="hire_date" value="{{ m.hire_date or '' }}"></label>
             <label class="f-hire" {{ 'hidden' if not is_hire }}>Return date<input type="text" name="return_date" value="{{ m.return_date or '' }}"></label>

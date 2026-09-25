@@ -97,10 +97,11 @@ def webhook():
     phone = custom.get("phone", "")
     email = custom.get("email", "")
     business_name = custom.get("business_name", "") or custom.get("business_nam", "")
-    machine = custom.get("machine", "")
+    machine = custom.get("machine", "") or custom.get("brand", "")
     model = custom.get("model", "")
     serial_number = custom.get("serial_number", "")
     symptoms = custom.get("symptoms", "")
+    job_type = custom.get("job_type", "")
 
     # Address — from Custom Data if you've mapped it there, otherwise from
     # the standard contact fields GHL includes with every webhook, and as a
@@ -161,9 +162,10 @@ def webhook():
 📧 Email: {email}
 🏢 Business: {business_name}
 📍 Address: {address_line}
-🔧 Machine: {machine}
+🔧 Brand: {machine}
 📋 Model: {model}
 🔢 Serial: {serial_number}
+🛠️ Job Type: {job_type}
 ⚠️ Issue: {symptoms}"""
         template_id = DROPOFF_TEMPLATE_ID
         list_id = DROPOFF_LIST_ID
@@ -209,6 +211,7 @@ def webhook():
             "model": model,
             "serial_number": serial_number,
             "symptoms": symptoms,
+            "job_type": job_type,
             "hire_date": hire_date,
             "return_date": return_date,
             "hire_charge": hire_charge,

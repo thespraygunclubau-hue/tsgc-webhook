@@ -24,20 +24,27 @@ DROPOFF_LIST_ID = os.environ.get("DROPOFF_LIST_ID")
 
 # Maps the emoji-prefixed lines app.py writes into card descriptions
 # back to field names.
+def _line(label):
+    """Matches "<any emoji> Label: value" on its own line; the value stops
+    at the end of that line, so a blank field stays blank."""
+    return r"(?mi)^[^\w\n]*(?:" + label + r")[ \t]*:[ \t]*([^\n]*)"
+
+
 FIELD_PATTERNS = {
-    "full_name":        r"👤 Customer:[ \t]*([^\n]*)",
-    "phone":            r"📱 Phone:[ \t]*([^\n]*)",
-    "email":            r"📧 Email:[ \t]*([^\n]*)",
-    "business_name":    r"🏢 Business:[ \t]*([^\n]*)",
-    "machine":          r"🔧 Machine:[ \t]*([^\n]*)",
-    "model":            r"📋 Model:[ \t]*([^\n]*)",
-    "serial_number":    r"🔢 Serial:[ \t]*([^\n]*)",
-    "symptoms":         r"⚠️ Issue:[ \t]*([^\n]*)",
-    "accessories":      r"📦 Accessories:[ \t]*([^\n]*)",
-    "hire_date":        r"📅 Hire Date:[ \t]*([^\n]*)",
-    "return_date":      r"📅 Return Date:[ \t]*([^\n]*)",
-    "hire_charge":      r"💰 Hire Charge:[ \t]*([^\n]*)",
-    "security_deposit": r"🔒 Security Deposit:[ \t]*([^\n]*)",
+    "full_name":        _line("Customer"),
+    "phone":            _line("Phone"),
+    "email":            _line("Email"),
+    "business_name":    _line("Business"),
+    "machine":          _line("Machine|Brand"),   # Drop-Off template says "Brand"
+    "model":            _line("Model"),
+    "serial_number":    _line("Serial"),
+    "job_type":         _line("Job Type"),
+    "symptoms":         _line("Issue"),
+    "accessories":      _line("Accessories"),
+    "hire_date":        _line("Hire Date"),
+    "return_date":      _line("Return Date"),
+    "hire_charge":      _line("Hire Charge"),
+    "security_deposit": _line("Security Deposit"),
 }
 
 # Fallback for older cards created by hand in Trello, with no structured
@@ -48,7 +55,7 @@ CARD_TITLE_RE = re.compile(r"^\s*(?:Drop-Off|Hire)\s*[—-]\s*(?P<customer>.+?)\
 # Matches a value that is really another field's label, e.g.
 # "🔧 Machine: SGC1" landing in Business when Business was blank.
 LABEL_RE = re.compile(
-    r"^\W*(Customer|Phone|Email|Business|Address|Machine|Model|Serial|Issue|"
+    r"^\W*(Customer|Phone|Email|Business|Address|Machine|Brand|Model|Serial|Job Type|Issue|"
     r"Accessories|Hire Date|Return Date|Hire Charge|Security Deposit)\s*:",
     re.IGNORECASE,
 )
@@ -158,6 +165,7 @@ def sync_card(card_id, card=None):
         "model": fields.get("model"),
         "serial_number": fields.get("serial_number"),
         "symptoms": fields.get("symptoms"),
+        "job_type": fields.get("job_type"),
         "hire_date": fields.get("hire_date"),
         "return_date": fields.get("return_date"),
         "hire_charge": fields.get("hire_charge"),
