@@ -5,7 +5,7 @@
   .cd-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
   .cd-name { font-family: 'Archivo Black', 'Inter', sans-serif; font-size: 24px; line-height: 1.15; margin: 0; letter-spacing: -0.01em; }
   .cd-biz { color: var(--muted); font-size: 15px; margin-top: 4px; }
-  .cd-contact { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 18px 0 20px; }
+  .cd-contact { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 18px 0 20px; }
   .cd-contact div { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; min-width: 0; }
   .cd-contact .wide { grid-column: 1 / -1; }
   .cd-contact span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 3px; }
@@ -36,6 +36,7 @@
   .tl-fields { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; font-size: 14px; margin: 0; }
   .tl-fields dt { color: var(--muted); }
   .tl-fields dd { margin: 0; overflow-wrap: anywhere; }
+  .tl-fields dd.blank { color: var(--muted); }
   .tl-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
   .tl-btns form { margin: 0 0 0 auto; }
   .cd-empty { color: var(--muted); font-size: 14px; padding: 12px 0; }
@@ -56,6 +57,7 @@
   [hidden] { display: none !important; }
   @media (max-width: 520px) {
     .ed-grid { grid-template-columns: 1fr; }
+    .cd-contact { grid-template-columns: 1fr; }
     .tl-fields { grid-template-columns: 1fr; }
     .tl-fields dt { margin-top: 6px; }
     .tl-btns form { margin-left: 0; }
@@ -67,13 +69,13 @@
   <div class="cd-head">
     <div>
       <h2 class="cd-name" id="cd-title">{{ customer.full_name }}</h2>
-      {% if customer.business_name %}<div class="cd-biz">{{ customer.business_name }}</div>{% endif %}
     </div>
     <button type="button" class="btn btn-ghost btn-sm cd-edit" data-edit="ed-cust">Edit details</button>
   </div>
 
   <div class="cd-contact">
-    <div><span>Phone</span>{% if customer.phone %}<a href="tel:{{ customer.phone }}">{{ customer.phone }}</a>{% else %}<b>—</b>{% endif %}</div>
+    <div><span>Business</span><b>{{ customer.business_name or '—' }}</b></div>
+    <div><span>Phone</span>{% if customer.phone %}<a href="tel:{{ customer.phone|replace(' ', '') }}">{{ customer.phone|phone }}</a>{% else %}<b>—</b>{% endif %}</div>
     <div><span>Email</span>{% if customer.email %}<a href="mailto:{{ customer.email }}">{{ customer.email }}</a>{% else %}<b>—</b>{% endif %}</div>
     <div><span>Customer since</span><b>{{ customer.created_at.strftime('%d %b %Y') if customer.created_at else '—' }}</b></div>
     {% set addr_line = [customer.address1, customer.city, [customer.state, customer.postal_code]|select|join(' ')]|select|join(', ') %}
@@ -116,18 +118,18 @@
           <span class="tl-date">{{ m.created_at.strftime('%d %b %Y, %I:%M %p') if m.created_at else '' }}</span>
         </div>
         <div data-view="ed-{{ m.id }}">
-        <div class="tl-title">{{ m.machine or 'Unknown machine' }}{% if m.model %} {{ m.model }}{% endif %}</div>
+        <div class="tl-title">{{ [m.machine, m.model]|select|join(' ') or 'No machine listed' }}</div>
+        {% if is_hire %}
+          {% set rows = [('Machine', m.machine), ('Model', m.model), ('Serial', m.serial_number),
+                         ('Hire date', m.hire_date), ('Return date', m.return_date), ('Hire charge', m.hire_charge),
+                         ('Security deposit', m.security_deposit), ('Accessories', m.accessories)] %}
+        {% else %}
+          {% set rows = [('Machine', m.machine), ('Model', m.model), ('Serial', m.serial_number), ('Issue', m.symptoms)] %}
+        {% endif %}
         <dl class="tl-fields">
-          {% if m.serial_number %}<dt>Serial</dt><dd>{{ m.serial_number }}</dd>{% endif %}
-          {% if is_hire %}
-            {% if m.hire_date %}<dt>Hire date</dt><dd>{{ m.hire_date }}</dd>{% endif %}
-            {% if m.return_date %}<dt>Return date</dt><dd>{{ m.return_date }}</dd>{% endif %}
-            {% if m.hire_charge %}<dt>Hire charge</dt><dd>{{ m.hire_charge }}</dd>{% endif %}
-            {% if m.security_deposit %}<dt>Deposit</dt><dd>{{ m.security_deposit }}</dd>{% endif %}
-            {% if m.accessories %}<dt>Accessories</dt><dd>{{ m.accessories }}</dd>{% endif %}
-          {% else %}
-            {% if m.symptoms %}<dt>Issue</dt><dd>{{ m.symptoms }}</dd>{% endif %}
-          {% endif %}
+          {% for label, value in rows %}
+            <dt>{{ label }}</dt><dd{% if not value %} class="blank"{% endif %}>{{ value or '—' }}</dd>
+          {% endfor %}
         </dl>
         <div class="tl-btns">
           <a class="btn btn-primary btn-sm" href="{{ prefill_url(m.form_type, customer, m) }}" target="_blank" rel="noopener">Book Again</a>
