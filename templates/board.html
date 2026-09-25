@@ -114,14 +114,13 @@
               data-d="{{ c.dropoff_count }}" data-h="{{ c.hire_count }}"
               data-s="{{ [c.full_name, c.phone, c.email, c.business_name, c.address1, c.city, c.state, c.postal_code]|select|join(' ')|lower }} {{ c.machine_text }}">
         <div class="cc-name">{{ c.full_name }}</div>
-        {% if c.business_name %}<div class="cc-biz">{{ c.business_name }}</div>{% endif %}
-        {% if c.phone %}<div class="cc-phone">{{ c.phone }}</div>{% endif %}
+        {% if c.business_name and c.business_name|lower != c.full_name|lower %}<div class="cc-biz">{{ c.business_name }}</div>{% endif %}
+        {% if c.phone %}<div class="cc-phone">{{ c.phone|phone }}</div>{% endif %}
         {% if c.latest_machine %}<div class="cc-machine">{{ c.latest_machine }}</div>{% endif %}
         <div class="cc-foot">
-          {% if c.service_count %}
-            <span class="tag {{ 'tag-hire' if c.latest_type == 'hire' else 'tag-dropoff' }}">{{ 'Hire' if c.latest_type == 'hire' else 'Drop-Off' }}</span>
-          {% endif %}
-          <span class="n">{% if c.service_count %}{{ [(c.dropoff_count ~ ' Drop-Off') if c.dropoff_count, (c.hire_count ~ ' Hire') if c.hire_count]|select|join(' · ') }}{% else %}No services yet{% endif %}</span>
+          {% if c.dropoff_count %}<span class="tag tag-dropoff">Drop-Off{% if c.dropoff_count > 1 %} ×{{ c.dropoff_count }}{% endif %}</span>{% endif %}
+          {% if c.hire_count %}<span class="tag tag-hire">Hire{% if c.hire_count > 1 %} ×{{ c.hire_count }}{% endif %}</span>{% endif %}
+          {% if not c.service_count %}<span class="n">No services yet</span>{% endif %}
           {% if c.last_service_at %}<span class="d">{{ c.last_service_at.strftime('%d %b %Y') }}</span>{% endif %}
         </div>
       </button>

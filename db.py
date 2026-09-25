@@ -53,6 +53,11 @@ def _ensure_schema(conn):
         print("SCHEMA SETUP ERROR:", repr(e))
 
 
+# A value that is really another field's label ("🔧 Machine: SGC1" stored
+# as a business name) — left behind by an old Trello-reading bug.
+_LABEL_SQL = r"^\W*(customer|phone|email|business|address|machine|model|serial|issue|accessories|hire date|return date|hire charge|security deposit)\s*:"
+
+
 def _run_schema_additions(conn):
     with conn.cursor() as cur:
         cur.execute(
@@ -73,6 +78,23 @@ def _run_schema_additions(conn):
                 updated_at timestamptz not null default now()
             );
             """
+        )
+        # Clear values polluted by the old Trello-reading bug. Safe to run
+        # every start-up: it only touches values that start with a label.
+        cur.execute(
+            """
+            update customers set business_name = null where business_name ~* %(label)s;
+            update machines set machine = null where machine ~* %(label)s;
+            update machines set model = null where model ~* %(label)s;
+            update machines set serial_number = null where serial_number ~* %(label)s;
+            update machines set symptoms = null where symptoms ~* %(label)s;
+            update machines set accessories = null where accessories ~* %(label)s;
+            update machines set hire_date = null where hire_date ~* %(label)s;
+            update machines set return_date = null where return_date ~* %(label)s;
+            update machines set hire_charge = null where hire_charge ~* %(label)s;
+            update machines set security_deposit = null where security_deposit ~* %(label)s;
+            """,
+            {"label": _LABEL_SQL},
         )
     conn.commit()
 

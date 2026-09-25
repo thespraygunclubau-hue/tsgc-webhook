@@ -25,19 +25,19 @@ DROPOFF_LIST_ID = os.environ.get("DROPOFF_LIST_ID")
 # Maps the emoji-prefixed lines app.py writes into card descriptions
 # back to field names.
 FIELD_PATTERNS = {
-    "full_name":        r"👤 Customer:\s*(.*)",
-    "phone":            r"📱 Phone:\s*(.*)",
-    "email":            r"📧 Email:\s*(.*)",
-    "business_name":    r"🏢 Business:\s*(.*)",
-    "machine":          r"🔧 Machine:\s*(.*)",
-    "model":            r"📋 Model:\s*(.*)",
-    "serial_number":    r"🔢 Serial:\s*(.*)",
-    "symptoms":         r"⚠️ Issue:\s*(.*)",
-    "accessories":      r"📦 Accessories:\s*(.*)",
-    "hire_date":        r"📅 Hire Date:\s*(.*)",
-    "return_date":      r"📅 Return Date:\s*(.*)",
-    "hire_charge":      r"💰 Hire Charge:\s*(.*)",
-    "security_deposit": r"🔒 Security Deposit:\s*(.*)",
+    "full_name":        r"👤 Customer:[ \t]*([^\n]*)",
+    "phone":            r"📱 Phone:[ \t]*([^\n]*)",
+    "email":            r"📧 Email:[ \t]*([^\n]*)",
+    "business_name":    r"🏢 Business:[ \t]*([^\n]*)",
+    "machine":          r"🔧 Machine:[ \t]*([^\n]*)",
+    "model":            r"📋 Model:[ \t]*([^\n]*)",
+    "serial_number":    r"🔢 Serial:[ \t]*([^\n]*)",
+    "symptoms":         r"⚠️ Issue:[ \t]*([^\n]*)",
+    "accessories":      r"📦 Accessories:[ \t]*([^\n]*)",
+    "hire_date":        r"📅 Hire Date:[ \t]*([^\n]*)",
+    "return_date":      r"📅 Return Date:[ \t]*([^\n]*)",
+    "hire_charge":      r"💰 Hire Charge:[ \t]*([^\n]*)",
+    "security_deposit": r"🔒 Security Deposit:[ \t]*([^\n]*)",
 }
 
 # Fallback for older cards created by hand in Trello, with no structured
@@ -45,11 +45,24 @@ FIELD_PATTERNS = {
 CARD_TITLE_RE = re.compile(r"^\s*(?:Drop-Off|Hire)\s*[—-]\s*(?P<customer>.+?)\s*\|\s*(?P<machine>.+?)\s*$")
 
 
+# Matches a value that is really another field's label, e.g.
+# "🔧 Machine: SGC1" landing in Business when Business was blank.
+LABEL_RE = re.compile(
+    r"^\W*(Customer|Phone|Email|Business|Address|Machine|Model|Serial|Issue|"
+    r"Accessories|Hire Date|Return Date|Hire Charge|Security Deposit)\s*:",
+    re.IGNORECASE,
+)
+
+
 def parse_description(desc):
+    """Read the "Label: value" lines. Each value stops at the end of its
+    own line — a blank field stays blank instead of swallowing the next
+    line."""
     fields = {}
     for key, pattern in FIELD_PATTERNS.items():
         m = re.search(pattern, desc or "")
-        fields[key] = m.group(1).strip() if m else ""
+        value = m.group(1).strip() if m else ""
+        fields[key] = "" if LABEL_RE.match(value) else value
     return fields
 
 

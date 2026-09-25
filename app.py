@@ -7,6 +7,7 @@ import contextlib
 import hmac
 import hashlib
 import base64
+import re
 
 import db
 import import_trello
@@ -25,6 +26,45 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("RENDER") is not None
 @app.context_processor
 def _template_helpers():
     return {"prefill_url": prefill.build_url}
+
+
+# Emojis and pictographs (plus the invisible joiners/variation selectors
+# that ride along with them) — stripped from everything the app shows.
+_EMOJI_RE = re.compile(
+    "[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U00002B00-\U00002BFF"
+    "\U0000FE00-\U0000FE0F\U0000200D\U000020E3\U00002190-\U000021FF]"
+)
+
+
+def _strip_emoji(value):
+    if not isinstance(value, str):
+        return value
+    return re.sub(r"\s{2,}", " ", _EMOJI_RE.sub("", value)).strip()
+
+
+def _clean_row(row):
+    if row is None:
+        return None
+    row = dict(row)
+    for k, v in row.items():
+        if isinstance(v, str) and k not in ("id", "customer_id", "trello_card_url", "email"):
+            row[k] = _strip_emoji(v)
+    return row
+
+
+@app.template_filter("phone")
+def _format_phone(value):
+    """Show Australian numbers one consistent way: 0412 345 678 / 02 4960 1234."""
+    if not value:
+        return value
+    digits = re.sub(r"\D", "", value)
+    if digits.startswith("61") and len(digits) == 11:
+        digits = "0" + digits[2:]
+    if len(digits) == 10 and digits.startswith("04"):
+        return f"{digits[:4]} {digits[4:7]} {digits[7:]}"
+    if len(digits) == 10 and digits.startswith("0"):
+        return f"{digits[:2]} {digits[2:6]} {digits[6:]}"
+    return value
 
 TRELLO_KEY = os.environ.get("TRELLO_KEY")
 TRELLO_TOKEN = os.environ.get("TRELLO_TOKEN")
@@ -281,7 +321,7 @@ def board():
     error = None
     missing_address = 0
     try:
-        customers = db.list_board_customers()
+        customers = [_clean_row(c) for c in db.list_board_customers()]
         missing_address = sum(
             1 for c in customers
             if not any(c.get(k) for k in db.ADDRESS_FIELDS) and (c.get("phone") or c.get("email"))
@@ -321,6 +361,10 @@ def customer_profile(customer_id):
 
     try:
         customer = db.get_customer_with_machines(customer_id)
+        if customer:
+            machines = [_clean_row(m) for m in customer.get("machines", [])]
+            customer = _clean_row(customer)
+            customer["machines"] = machines
     except Exception as e:
         print("PROFILE ERROR:", repr(e))
         return "Failed to load customer — check server logs.", 500
