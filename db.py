@@ -30,6 +30,105 @@ def _clean(value):
     return value or None
 
 
+# --------------------------------------------------------------------
+# Templates + app-only deletes
+# --------------------------------------------------------------------
+
+def is_template_name(name):
+    """Trello template cards (e.g. "TEMPLATE - Drop Off") must never show
+    up as customers."""
+    return (name or "").strip().lower().startswith("template")
+
+
+_deleted_table_ready = False
+
+
+def _ensure_deleted_table(cur):
+    """
+    deleted_cards remembers Trello cards whose entries were deleted in the
+    app. Without it, the next time someone edits or moves that card in
+    Trello, the Trello sync would quietly re-create the entry.
+    Created automatically — no need to run anything in Supabase.
+    """
+    global _deleted_table_ready
+    if _deleted_table_ready:
+        return
+    cur.execute(
+        """
+        create table if not exists deleted_cards (
+            trello_card_id text primary key,
+            deleted_at timestamptz not null default now()
+        )
+        """
+    )
+    _deleted_table_ready = True
+
+
+def is_card_deleted(trello_card_id):
+    if not trello_card_id:
+        return False
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            _ensure_deleted_table(cur)
+            cur.execute("select 1 from deleted_cards where trello_card_id = %s", (trello_card_id,))
+            found = cur.fetchone() is not None
+            conn.commit()
+            return found
+    finally:
+        conn.close()
+
+
+def _remember_deleted_cards(cur, card_ids):
+    _ensure_deleted_table(cur)
+    for cid in card_ids:
+        if cid:
+            cur.execute(
+                "insert into deleted_cards (trello_card_id) values (%s) on conflict do nothing",
+                (cid,),
+            )
+
+
+def delete_machine(machine_id):
+    """Delete one service entry from the app only (Trello is not touched).
+    Returns the customer_id it belonged to, or None if not found."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "delete from machines where id = %s returning customer_id, trello_card_id",
+                (machine_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                conn.commit()
+                return None
+            customer_id, card_id = row
+            _remember_deleted_cards(cur, [card_id])
+            conn.commit()
+            return str(customer_id)
+    finally:
+        conn.close()
+
+
+def delete_customer(customer_id):
+    """Delete a customer and all their entries from the app only
+    (Trello is not touched). Returns True if a customer was deleted."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("select trello_card_id from machines where customer_id = %s", (customer_id,))
+            card_ids = [r[0] for r in cur.fetchall()]
+            _remember_deleted_cards(cur, card_ids)
+            # machines rows go with it via "on delete cascade"
+            cur.execute("delete from customers where id = %s", (customer_id,))
+            deleted = cur.rowcount > 0
+            conn.commit()
+            return deleted
+    finally:
+        conn.close()
+
+
 def upsert_customer(full_name, phone, email, business_name):
     phone = _clean(phone)
     email = _clean(email)
@@ -192,7 +291,8 @@ def search_customers(query, limit=50):
                 select c.*, count(m.id) as machine_count
                 from customers c
                 left join machines m on m.customer_id = c.id
-                where c.full_name ilike %s
+                where c.full_name not ilike 'template%%' and (
+                   c.full_name ilike %s
                    or c.phone ilike %s
                    or c.email ilike %s
                    or c.business_name ilike %s
@@ -200,7 +300,7 @@ def search_customers(query, limit=50):
                         select 1 from machines m2
                         where m2.customer_id = c.id
                           and (m2.machine ilike %s or m2.model ilike %s or m2.serial_number ilike %s)
-                   )
+                   ))
                 group by c.id
                 order by c.full_name asc
                 limit %s
@@ -225,6 +325,7 @@ def list_all_customers(limit=500):
                 select c.*, count(m.id) as machine_count
                 from customers c
                 left join machines m on m.customer_id = c.id
+                where c.full_name not ilike 'template%%'
                 group by c.id
                 order by c.full_name asc
                 limit %s
@@ -252,5 +353,42 @@ def get_customer_with_machines(customer_id):
             customer = dict(customer)
             customer["machines"] = machines
             return customer
+    finally:
+        conn.close()
+
+
+def list_board_customers(limit=5000):
+    """
+    Everything the board needs in one query: each customer with their
+    service count, latest job type and date, and a lowercase blob of all
+    their machine / model / serial values so the live search box can
+    match on those too. Newest activity first. Templates hidden.
+    """
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                select c.id, c.full_name, c.phone, c.email, c.business_name, c.created_at,
+                       count(m.id) as service_count,
+                       max(m.created_at) as last_service_at,
+                       (select m3.form_type from machines m3
+                         where m3.customer_id = c.id
+                         order by m3.created_at desc limit 1) as latest_type,
+                       (select m4.machine from machines m4
+                         where m4.customer_id = c.id
+                         order by m4.created_at desc limit 1) as latest_machine,
+                       lower(coalesce(string_agg(
+                           concat_ws(' ', m.machine, m.model, m.serial_number), ' '), '')) as machine_text
+                from customers c
+                left join machines m on m.customer_id = c.id
+                where c.full_name not ilike 'template%%'
+                group by c.id
+                order by coalesce(max(m.created_at), c.created_at) desc
+                limit %s
+                """,
+                (limit,),
+            )
+            return cur.fetchall()
     finally:
         conn.close()

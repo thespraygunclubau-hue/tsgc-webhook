@@ -11,9 +11,19 @@ import base64
 import db
 import import_trello
 import trello_sync
+import prefill
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
+# Stops other websites from submitting forms (e.g. delete) using a
+# logged-in staff member's session.
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("RENDER") is not None
+
+
+@app.context_processor
+def _template_helpers():
+    return {"prefill_url": prefill.build_url}
 
 TRELLO_KEY = os.environ.get("TRELLO_KEY")
 TRELLO_TOKEN = os.environ.get("TRELLO_TOKEN")
@@ -117,6 +127,8 @@ def webhook():
     print("TRELLO UPDATE STATUS:", update_response.status_code, update_response.text)
 
     try:
+        if db.is_template_name(customer_name):
+            raise ValueError("template entry — not saved to registry")
         customer_id = db.upsert_customer(customer_name, phone, email, business_name)
         db.insert_machine(customer_id, {
             "form_type": form_type,
@@ -216,7 +228,7 @@ def login():
     if request.method == "POST":
         if request.form.get("password") == REGISTRY_PASSWORD:
             session["logged_in"] = True
-            return redirect(url_for("search"))
+            return redirect(url_for("board"))
         error = "Wrong password."
     return render_template("login.html", error=error)
 
@@ -227,29 +239,41 @@ def logout():
     return redirect(url_for("login"))
 
 
-@app.route("/search", methods=["GET"])
-def search():
+@app.route("/board", methods=["GET"])
+def board():
     if not _logged_in():
         return redirect(url_for("login"))
 
-    query = request.args.get("q", "").strip()
-    results = []
+    customers = []
     error = None
     try:
-        if query:
-            results = db.search_customers(query)
-        else:
-            results = db.list_all_customers()
+        customers = db.list_board_customers()
     except Exception as e:
-        print("SEARCH ERROR:", repr(e))
-        error = "Search failed — check server logs."
+        print("BOARD ERROR:", repr(e))
+        error = "Couldn't load customers — check server logs."
 
-    return render_template("search.html", query=query, results=results, error=error)
+    return render_template(
+        "board.html",
+        customers=customers,
+        error=error,
+        query=request.args.get("q", ""),
+        open_id=request.args.get("open", ""),
+        flash_msg=request.args.get("msg", ""),
+    )
+
+
+@app.route("/search", methods=["GET"])
+def search():
+    # Old address — keeps existing bookmarks working.
+    q = request.args.get("q", "")
+    return redirect(url_for("board", q=q) if q else url_for("board"))
 
 
 @app.route("/customer/<customer_id>", methods=["GET"])
 def customer_profile(customer_id):
     if not _logged_in():
+        if request.args.get("partial"):
+            return "Session expired — please log in again.", 401
         return redirect(url_for("login"))
 
     try:
@@ -261,7 +285,40 @@ def customer_profile(customer_id):
     if not customer:
         return "Customer not found.", 404
 
+    if request.args.get("partial"):
+        # Just the card contents, loaded into the pop-up on the board.
+        return render_template("_customer_detail.html", customer=customer)
     return render_template("customer.html", customer=customer)
+
+
+@app.route("/entry/<machine_id>/delete", methods=["POST"])
+def delete_entry(machine_id):
+    """Deletes one service entry from the app only — Trello is untouched."""
+    if not _logged_in():
+        return redirect(url_for("login"))
+    try:
+        customer_id = db.delete_machine(machine_id)
+    except Exception as e:
+        print("DELETE ENTRY ERROR:", repr(e))
+        return "Delete failed — check server logs.", 500
+    print("DELETED ENTRY", machine_id, "for customer", customer_id)
+    if customer_id:
+        return redirect(url_for("board", open=customer_id, msg="Entry deleted."))
+    return redirect(url_for("board"))
+
+
+@app.route("/customer/<customer_id>/delete", methods=["POST"])
+def delete_customer(customer_id):
+    """Deletes a customer and all their entries from the app only."""
+    if not _logged_in():
+        return redirect(url_for("login"))
+    try:
+        db.delete_customer(customer_id)
+    except Exception as e:
+        print("DELETE CUSTOMER ERROR:", repr(e))
+        return "Delete failed — check server logs.", 500
+    print("DELETED CUSTOMER", customer_id)
+    return redirect(url_for("board", msg="Customer deleted."))
 
 
 @app.route("/admin/import-trello", methods=["GET"])

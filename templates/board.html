@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% set show_logout = true %}
+{% block title %}Customers — TSGC Registry{% endblock %}
+{% block main_class %}wide{% endblock %}
+
+{% block head %}
+<style>
+  .bd-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  .bd-title { font-family: 'Archivo Black', 'Inter', sans-serif; font-size: 28px; margin: 0; letter-spacing: -0.01em; }
+  .bd-count { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  .bd-search { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 10px 0 14px; }
+  .bd-search input { font-size: 16px; padding: 14px 16px 14px 44px; border-radius: 10px;
+    background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' fill='none' stroke='%236b6b66' stroke-width='2' stroke-linecap='round' viewBox='0 0 24 24'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 15px center; }
+  .bd-search input:focus { outline: none; border-color: var(--text); }
+  .bd-flash { background: #e8f5ec; color: #1d5c32; border: 1px solid #bfe3cb; border-radius: 8px; padding: 10px 14px; font-size: 14px; margin-bottom: 14px; }
+
+  .bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  .cc { display: flex; flex-direction: column; text-align: left; background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+        padding: 16px 16px 14px; cursor: pointer; font: inherit; color: inherit; width: 100%; min-height: 150px;
+        box-shadow: 0 1px 0 rgba(0,0,0,.03); transition: border-color .12s, box-shadow .12s, transform .12s; position: relative; overflow: hidden; }
+  .cc::before { content: ""; position: absolute; left: 0; top: 0; right: 0; height: 4px; background: var(--accent); }
+  .cc.t-hire::before { background: var(--header-bg); }
+  .cc.t-none::before { background: var(--border); }
+  .cc:hover { border-color: #c9c6bf; box-shadow: 0 6px 18px rgba(0,0,0,.07); transform: translateY(-1px); background: var(--card); }
+  .cc:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .cc-name { font-weight: 700; font-size: 17px; line-height: 1.25; margin-top: 4px; overflow-wrap: anywhere; }
+  .cc-biz { color: var(--muted); font-size: 14px; margin-top: 2px; overflow-wrap: anywhere; }
+  .cc-phone { font-size: 14px; margin-top: 8px; color: var(--text); }
+  .cc-machine { font-size: 13px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cc-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 12px; flex-wrap: wrap; }
+  .cc-foot .n { font-size: 12px; color: var(--muted); }
+  .cc-foot .d { font-size: 12px; color: var(--muted); margin-left: auto; }
+  .tag { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 3px 8px; border-radius: 999px; }
+  .tag-dropoff { background: #ffe5e5; color: #b3261e; }
+  .tag-hire { background: #1c1c1a; color: #fff; }
+  .bd-empty { text-align: center; color: var(--muted); padding: 60px 20px; }
+
+  /* Pop-up */
+  .ov { position: fixed; inset: 0; background: rgba(10,10,10,.55); z-index: 50; display: none; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow-y: auto; }
+  .ov.open { display: flex; }
+  .md { background: var(--bg); border-radius: 14px; width: 100%; max-width: 720px; position: relative; box-shadow: 0 20px 60px rgba(0,0,0,.35); padding: 28px; }
+  .md-x { position: absolute; top: 14px; right: 14px; width: 36px; height: 36px; border-radius: 50%; background: var(--card); color: var(--text); border: 1px solid var(--border); font-size: 20px; line-height: 1; padding: 0; display: flex; align-items: center; justify-content: center; }
+  .md-x:hover { background: var(--card); border-color: var(--text); }
+  .md-loading { color: var(--muted); padding: 40px 0; text-align: center; }
+  body.no-scroll { overflow: hidden; }
+  @media (max-width: 600px) {
+    main.wide { padding: 16px 16px 40px; }
+    .bd-grid { grid-template-columns: 1fr; }
+    .ov { padding: 0; }
+    .md { border-radius: 0; min-height: 100%; padding: 22px 16px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+  <div class="bd-top">
+    <div>
+      <h1 class="bd-title">Customers</h1>
+      <div class="bd-count" id="count">{{ customers|length }} customer{{ '' if customers|length == 1 else 's' }}</div>
+    </div>
+  </div>
+
+  {% if flash_msg %}<div class="bd-flash">{{ flash_msg }}</div>{% endif %}
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+  <div class="bd-search">
+    <input type="text" id="q" value="{{ query }}" autocomplete="off"
+           placeholder="Search name, phone, email, business, machine, model or serial…" aria-label="Search customers">
+  </div>
+
+  <div class="bd-grid" id="grid">
+    {% for c in customers %}
+      {% set t = c.latest_type if c.service_count else 'none' %}
+      <button type="button" class="cc t-{{ t }}" data-id="{{ c.id }}"
+              data-s="{{ [c.full_name, c.phone, c.email, c.business_name]|select|join(' ')|lower }} {{ c.machine_text }}">
+        <div class="cc-name">{{ c.full_name }}</div>
+        {% if c.business_name %}<div class="cc-biz">{{ c.business_name }}</div>{% endif %}
+        {% if c.phone %}<div class="cc-phone">{{ c.phone }}</div>{% endif %}
+        {% if c.latest_machine %}<div class="cc-machine">{{ c.latest_machine }}</div>{% endif %}
+        <div class="cc-foot">
+          {% if c.service_count %}
+            <span class="tag {{ 'tag-hire' if c.latest_type == 'hire' else 'tag-dropoff' }}">{{ 'Hire' if c.latest_type == 'hire' else 'Drop-Off' }}</span>
+          {% endif %}
+          <span class="n">{{ c.service_count }} service{{ '' if c.service_count == 1 else 's' }}</span>
+          {% if c.last_service_at %}<span class="d">{{ c.last_service_at.strftime('%d %b %Y') }}</span>{% endif %}
+        </div>
+      </button>
+    {% endfor %}
+  </div>
+  <div class="bd-empty" id="empty" {% if customers %}hidden{% endif %}>
+    {% if customers %}No customers match your search.{% else %}No customers in the registry yet.{% endif %}
+  </div>
+
+  <div class="ov" id="ov" role="dialog" aria-modal="true" aria-labelledby="cd-title">
+    <div class="md">
+      <button type="button" class="md-x" id="close" aria-label="Close">&times;</button>
+      <div id="md-body"></div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  var q = document.getElementById('q');
+  var cards = Array.prototype.slice.call(document.querySelectorAll('.cc'));
+  var count = document.getElementById('count');
+  var empty = document.getElementById('empty');
+  var total = cards.length;
+
+  function filter() {
+    var terms = q.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    var shown = 0;
+    cards.forEach(function (c) {
+      var s = c.getAttribute('data-s');
+      var ok = terms.every(function (t) { return s.indexOf(t) !== -1; });
+      c.hidden = !ok;
+      if (ok) shown++;
+    });
+    count.textContent = terms.length
+      ? shown + ' of ' + total + ' customers'
+      : total + (total === 1 ? ' customer' : ' customers');
+    if (total) empty.hidden = shown !== 0;
+  }
+  q.addEventListener('input', filter);
+  filter();
+
+  // ---- Customer pop-up ----
+  var ov = document.getElementById('ov');
+  var body = document.getElementById('md-body');
+  var lastCard = null;
+
+  function setOpenParam(id) {
+    var url = new URL(window.location.href);
+    url.searchParams.delete('msg');
+    if (id) url.searchParams.set('open', id); else url.searchParams.delete('open');
+    history.replaceState(null, '', url);
+  }
+
+  function open(id) {
+    body.innerHTML = '<div class="md-loading">Loading…</div>';
+    ov.classList.add('open');
+    document.body.classList.add('no-scroll');
+    setOpenParam(id);
+    fetch('/customer/' + encodeURIComponent(id) + '?partial=1', { credentials: 'same-origin' })
+      .then(function (r) {
+        if (r.status === 401) { window.location.href = '/login'; return ''; }
+        if (!r.ok) throw new Error(r.status);
+        return r.text();
+      })
+      .then(function (html) {
+        if (html) body.innerHTML = html;
+        var closeBtn = document.getElementById('close');
+        if (closeBtn) closeBtn.focus();
+      })
+      .catch(function () { body.innerHTML = '<div class="md-loading">Couldn’t load this customer. Try again.</div>'; });
+  }
+
+  function close() {
+    ov.classList.remove('open');
+    document.body.classList.remove('no-scroll');
+    body.innerHTML = '';
+    setOpenParam(null);
+    if (lastCard) lastCard.focus();
+  }
+
+  cards.forEach(function (c) {
+    c.addEventListener('click', function () { lastCard = c; open(c.getAttribute('data-id')); });
+  });
+  document.getElementById('close').addEventListener('click', close);
+  ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && ov.classList.contains('open')) close(); });
+
+  var startId = {{ open_id|tojson }};
+  if (startId) {
+    lastCard = document.querySelector('.cc[data-id="' + CSS.escape(startId) + '"]');
+    open(startId);
+  }
+})();
+</script>
+{% endblock %}

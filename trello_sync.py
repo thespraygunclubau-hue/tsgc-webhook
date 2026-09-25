@@ -68,7 +68,7 @@ def fetch_card(card_id):
     params = {
         "key": TRELLO_KEY,
         "token": TRELLO_TOKEN,
-        "fields": "id,name,desc,shortUrl,idList,closed",
+        "fields": "id,name,desc,shortUrl,idList,closed,isTemplate",
     }
     resp = requests.get(url, params=params)
     resp.raise_for_status()
@@ -102,10 +102,24 @@ def sync_card(card_id, card=None):
     if card is None:
         card = fetch_card(card_id)
 
+    # Never turn a Trello template card into a customer.
+    if card.get("isTemplate") or db.is_template_name(card.get("name")):
+        print("TRELLO SYNC: skipping template card", card_id, card.get("name"))
+        return None, None
+
+    # Entry was deleted in the app — keep it deleted even if the card
+    # is edited or moved in Trello afterwards.
+    if db.is_card_deleted(card_id):
+        print("TRELLO SYNC: skipping card deleted in app", card_id)
+        return None, None
+
     fields = parse_description(card.get("desc", ""))
     title_customer, title_machine = parse_card_title(card.get("name", ""))
 
     full_name = fields.get("full_name") or title_customer or card.get("name") or "Unknown"
+    if db.is_template_name(full_name):
+        print("TRELLO SYNC: skipping template entry on card", card_id)
+        return None, None
     machine_value = fields.get("machine") or title_machine or ""
     list_id = card.get("idList")
     form_type = form_type_for_list(list_id, fields)

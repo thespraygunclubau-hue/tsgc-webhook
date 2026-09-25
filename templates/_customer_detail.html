@@ -1,0 +1,118 @@
+{# The inside of a customer card. Shown in the pop-up on the board
+   (loaded with ?partial=1) and on the full /customer/<id> page. #}
+<style>
+  .cd { color: var(--text); }
+  .cd-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .cd-name { font-family: 'Archivo Black', 'Inter', sans-serif; font-size: 24px; line-height: 1.15; margin: 0; letter-spacing: -0.01em; }
+  .cd-biz { color: var(--muted); font-size: 15px; margin-top: 4px; }
+  .cd-contact { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 18px 0 20px; }
+  .cd-contact div { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+  .cd-contact span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 3px; }
+  .cd-contact a, .cd-contact b { color: var(--text); font-weight: 600; font-size: 14px; text-decoration: none; overflow-wrap: anywhere; }
+  .cd-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 26px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; text-decoration: none; cursor: pointer; border: 1px solid transparent; font-family: inherit; line-height: 1.2; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-dark { background: var(--header-bg); color: #fff; }
+  .btn-dark:hover { background: #2a2a2a; }
+  .btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
+  .btn-ghost:hover { border-color: var(--text); background: transparent; }
+  .btn-danger { background: transparent; color: #b3261e; border-color: transparent; padding-left: 8px; padding-right: 8px; }
+  .btn-danger:hover { background: #fdecea; }
+  .btn-sm { padding: 7px 12px; font-size: 13px; }
+  .cd h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+  .tl { position: relative; padding-left: 22px; }
+  .tl::before { content: ""; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 2px; background: var(--border); }
+  .tl-item { position: relative; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+  .tl-item::before { content: ""; position: absolute; left: -21px; top: 20px; width: 12px; height: 12px; border-radius: 50%; background: var(--card); border: 3px solid var(--accent); }
+  .tl-item.hire::before { border-color: var(--header-bg); }
+  .tl-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .tl-date { font-size: 13px; color: var(--muted); }
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 3px 9px; border-radius: 999px; }
+  .pill-dropoff { background: #ffe5e5; color: #b3261e; }
+  .pill-hire { background: #1c1c1a; color: #fff; }
+  .tl-title { font-weight: 700; font-size: 16px; margin-bottom: 8px; }
+  .tl-fields { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; font-size: 14px; margin: 0; }
+  .tl-fields dt { color: var(--muted); }
+  .tl-fields dd { margin: 0; overflow-wrap: anywhere; }
+  .tl-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .tl-btns form { margin: 0 0 0 auto; }
+  .cd-empty { color: var(--muted); font-size: 14px; padding: 12px 0; }
+  .cd-foot { margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .cd-foot form { margin: 0; }
+  .cd-note { font-size: 12px; color: var(--muted); }
+  @media (max-width: 520px) {
+    .tl-fields { grid-template-columns: 1fr; }
+    .tl-fields dt { margin-top: 6px; }
+    .tl-btns form { margin-left: 0; }
+  }
+</style>
+
+<div class="cd">
+  <div class="cd-head">
+    <div>
+      <h2 class="cd-name" id="cd-title">{{ customer.full_name }}</h2>
+      {% if customer.business_name %}<div class="cd-biz">{{ customer.business_name }}</div>{% endif %}
+    </div>
+  </div>
+
+  <div class="cd-contact">
+    <div><span>Phone</span>{% if customer.phone %}<a href="tel:{{ customer.phone }}">{{ customer.phone }}</a>{% else %}<b>—</b>{% endif %}</div>
+    <div><span>Email</span>{% if customer.email %}<a href="mailto:{{ customer.email }}">{{ customer.email }}</a>{% else %}<b>—</b>{% endif %}</div>
+    <div><span>Customer since</span><b>{{ customer.created_at.strftime('%d %b %Y') if customer.created_at else '—' }}</b></div>
+  </div>
+
+  <div class="cd-actions">
+    <a class="btn btn-primary" href="{{ prefill_url('dropoff', customer) }}" target="_blank" rel="noopener">+ New Drop-Off</a>
+    <a class="btn btn-dark" href="{{ prefill_url('hire', customer) }}" target="_blank" rel="noopener">+ New Hire</a>
+  </div>
+
+  <h3>Service history ({{ customer.machines|length }})</h3>
+
+  {% if customer.machines %}
+  <div class="tl">
+    {% for m in customer.machines %}
+      {% set is_hire = m.form_type == 'hire' %}
+      <div class="tl-item {{ 'hire' if is_hire else 'dropoff' }}">
+        <div class="tl-top">
+          <span class="pill {{ 'pill-hire' if is_hire else 'pill-dropoff' }}">{{ 'Hire' if is_hire else 'Drop-Off' }}</span>
+          <span class="tl-date">{{ m.created_at.strftime('%d %b %Y, %I:%M %p') if m.created_at else '' }}</span>
+        </div>
+        <div class="tl-title">{{ m.machine or 'Unknown machine' }}{% if m.model %} {{ m.model }}{% endif %}</div>
+        <dl class="tl-fields">
+          {% if m.serial_number %}<dt>Serial</dt><dd>{{ m.serial_number }}</dd>{% endif %}
+          {% if is_hire %}
+            {% if m.hire_date %}<dt>Hire date</dt><dd>{{ m.hire_date }}</dd>{% endif %}
+            {% if m.return_date %}<dt>Return date</dt><dd>{{ m.return_date }}</dd>{% endif %}
+            {% if m.hire_charge %}<dt>Hire charge</dt><dd>{{ m.hire_charge }}</dd>{% endif %}
+            {% if m.security_deposit %}<dt>Deposit</dt><dd>{{ m.security_deposit }}</dd>{% endif %}
+            {% if m.accessories %}<dt>Accessories</dt><dd>{{ m.accessories }}</dd>{% endif %}
+          {% else %}
+            {% if m.symptoms %}<dt>Issue</dt><dd>{{ m.symptoms }}</dd>{% endif %}
+          {% endif %}
+        </dl>
+        <div class="tl-btns">
+          <a class="btn btn-primary btn-sm" href="{{ prefill_url(m.form_type, customer, m) }}" target="_blank" rel="noopener">↻ Book Again</a>
+          {% if m.trello_card_url %}
+            <a class="btn btn-ghost btn-sm" href="{{ m.trello_card_url }}" target="_blank" rel="noopener">Open in Trello ↗</a>
+          {% endif %}
+          <form method="post" action="{{ url_for('delete_entry', machine_id=m.id) }}"
+                data-confirm="Delete this {{ 'Hire' if is_hire else 'Drop-Off' }} entry ({{ m.machine or 'Unknown machine' }}) from the app?&#10;&#10;The Trello card will NOT be affected. This can't be undone.">
+            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  {% else %}
+    <p class="cd-empty">No services on file for this customer yet.</p>
+  {% endif %}
+
+  <div class="cd-foot">
+    <span class="cd-note">Deleting only removes it from this app — Trello cards stay as they are.</span>
+    <form method="post" action="{{ url_for('delete_customer', customer_id=customer.id) }}"
+          data-confirm="Delete {{ customer.full_name }} and all {{ customer.machines|length }} of their entries from the app?&#10;&#10;Trello cards will NOT be affected. This can't be undone.">
+      <button type="submit" class="btn btn-danger btn-sm">Delete customer</button>
+    </form>
+  </div>
+</div>

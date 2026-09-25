@@ -57,6 +57,9 @@
       margin: 0 auto;
       padding: 40px 24px;
     }
+    main.wide { max-width: 1240px; padding: 28px 24px 60px; }
+    header .brand a { color: inherit; text-decoration: none; }
+    header nav { display: flex; gap: 20px; align-items: center; }
     .card {
       background: var(--card);
       border: 1px solid var(--border);
@@ -100,14 +103,23 @@
     .trello-link { display: inline-block; margin-top: 10px; font-size: 14px; color: var(--accent); text-decoration: none; font-weight: 600; }
     .trello-link:hover { text-decoration: underline; color: var(--accent-hover); }
   </style>
+  {% block head %}{% endblock %}
 </head>
 <body>
   <header>
-    <span class="brand">TSGC REGISTRY</span>
-    {% if show_logout %}<a href="{{ url_for('logout') }}">Log out</a>{% endif %}
+    <span class="brand"><a href="{{ url_for('board') }}">TSGC REGISTRY</a></span>
+    {% if show_logout %}<nav><a href="{{ url_for('board') }}">Customers</a><a href="{{ url_for('logout') }}">Log out</a></nav>{% endif %}
   </header>
-  <main>
+  <main class="{% block main_class %}{% endblock %}">
     {% block content %}{% endblock %}
   </main>
+  <script>
+    // "Are you sure?" for any form with data-confirm (e.g. delete buttons),
+    // including ones loaded into the customer pop-up after the page loads.
+    document.addEventListener('submit', function (e) {
+      var msg = e.target.getAttribute && e.target.getAttribute('data-confirm');
+      if (msg && !window.confirm(msg)) e.preventDefault();
+    }, true);
+  </script>
 </body>
 </html>

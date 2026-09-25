@@ -35,7 +35,7 @@ def fetch_cards(board_id):
     params = {
         "key": TRELLO_KEY,
         "token": TRELLO_TOKEN,
-        "fields": "id,name,desc,shortUrl,idList,closed",
+        "fields": "id,name,desc,shortUrl,idList,closed,isTemplate",
     }
     resp = requests.get(url, params=params)
     resp.raise_for_status()
