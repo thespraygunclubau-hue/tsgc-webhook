@@ -25,7 +25,7 @@ import requests
 
 import db
 
-API_BASE = "https://services.leadconnectorhq.com"
+API_BASE = os.environ.get("GHL_API_BASE", "https://services.leadconnectorhq.com")
 API_VERSION = "2021-07-28"
 
 GHL_API_TOKEN = os.environ.get("GHL_API_TOKEN")
@@ -92,6 +92,16 @@ def get_contact_by_id(contact_id):
     return (resp.json() or {}).get("contact")
 
 
+def _full_contact(contact):
+    """The search result can be a trimmed-down contact; if it has no
+    address, fetch the full record by id."""
+    if contact and not _address_from_contact(contact) and contact.get("id"):
+        full = get_contact_by_id(contact["id"])
+        if full:
+            return full
+    return contact
+
+
 def find_contact(email=None, phone=None):
     """Exact match by email first, then by each phone format."""
     tries = []
@@ -113,7 +123,7 @@ def find_contact(email=None, phone=None):
             continue
         contact = (resp.json() or {}).get("contact")
         if contact:
-            return contact
+            return _full_contact(contact)
         time.sleep(0.12)  # stay well under GHL's rate limit
     return None
 
@@ -129,22 +139,35 @@ def lookup_address(email=None, phone=None, contact_id=None):
 
 
 # --------------------------------------------------------------------
-# Bulk pull, run in the background so the page doesn't time out
+# Bulk pull, run in the background so the page doesn't time out.
+# Progress is kept in the database (not in memory), so it's correct even
+# when Render runs more than one copy of the app.
 # --------------------------------------------------------------------
 
-_status_lock = threading.Lock()
-_status = {"running": False, "total": 0, "done": 0, "filled": 0,
-           "not_found": 0, "errors": 0, "message": "", "finished_at": None}
+_EMPTY = {"running": False, "total": 0, "done": 0, "filled": 0,
+          "not_found": 0, "errors": 0, "message": "", "finished_at": None}
+_STALE_SECONDS = 180  # a "running" pull with no progress for this long has died
 
 
 def status():
-    with _status_lock:
-        return dict(_status)
+    st = dict(_EMPTY)
+    try:
+        saved, age = db.get_pull_status()
+        if saved:
+            st.update(saved)
+            if st.get("running") and age is not None and age > _STALE_SECONDS:
+                st["running"] = False
+                st["message"] = st.get("message") or "The last pull stopped unexpectedly — click the button to run it again."
+    except Exception as e:
+        print("GHL STATUS ERROR:", repr(e))
+    return st
 
 
-def _set(**kw):
-    with _status_lock:
-        _status.update(kw)
+def _save(st):
+    try:
+        db.save_pull_status(st)
+    except Exception as e:
+        print("GHL STATUS SAVE ERROR:", repr(e))
 
 
 def start_pull():
@@ -152,42 +175,75 @@ def start_pull():
     (started: bool, message: str)."""
     if not configured():
         return False, "GHL isn't connected yet — add GHL_API_TOKEN and GHL_LOCATION_ID on Render."
-    with _status_lock:
-        if _status["running"]:
-            return False, "Already pulling addresses — hang tight."
-        _status.update(running=True, total=0, done=0, filled=0, not_found=0,
-                       errors=0, message="Starting…", finished_at=None)
-    threading.Thread(target=_pull_all, daemon=True).start()
+    if status()["running"]:
+        return False, "Already pulling addresses — hang tight."
+    st = dict(_EMPTY, running=True, message="")
+    _save(st)
+    threading.Thread(target=_pull_all, args=(st,), daemon=True).start()
     return True, "Pulling addresses from GHL…"
 
 
-def _pull_all():
+def _pull_all(st):
     try:
         customers = db.list_customers_missing_address()
-        _set(total=len(customers), message="")
+        st["total"] = len(customers)
+        _save(st)
         for c in customers:
             try:
                 addr = lookup_address(c.get("email"), c.get("phone"))
                 if addr:
                     db.fill_address(c["id"], addr)
-                    with _status_lock:
-                        _status["filled"] += 1
+                    st["filled"] += 1
                 else:
-                    with _status_lock:
-                        _status["not_found"] += 1
+                    st["not_found"] += 1
             except PermissionError as e:
-                _set(message=str(e))
+                st["message"] = str(e)
                 print("GHL PULL STOPPED:", e)
                 return
             except Exception as e:
                 print("GHL PULL ERROR for", c.get("full_name"), repr(e))
-                with _status_lock:
-                    _status["errors"] += 1
-            with _status_lock:
-                _status["done"] += 1
+                st["errors"] += 1
+            st["done"] += 1
+            _save(st)
             time.sleep(0.12)
+        print("GHL PULL DONE:", st)
     except Exception as e:
         print("GHL PULL FAILED:", repr(e))
-        _set(message="Pull failed — check server logs.")
+        st["message"] = "Pull failed — check server logs."
     finally:
-        _set(running=False, finished_at=time.time())
+        st["running"] = False
+        st["finished_at"] = time.time()
+        _save(st)
+
+
+# --------------------------------------------------------------------
+# Diagnostics (/ghl/check page)
+# --------------------------------------------------------------------
+
+def diagnose(customers):
+    """For each customer, try the lookup and record exactly what GHL
+    answered — so a failing setup can be pinned down in one look."""
+    results = []
+    for c in customers:
+        attempts = []
+        tries = []
+        if c.get("email"):
+            tries.append({"email": c["email"].strip()})
+        for p in phone_variants(c.get("phone")):
+            tries.append({"number": p})
+        found = None
+        for extra in tries:
+            try:
+                resp = _get("/contacts/search/duplicate", {"locationId": GHL_LOCATION_ID, **extra})
+                body = resp.text[:400]
+                attempts.append({"search": extra, "status": resp.status_code, "body": body})
+                if resp.status_code == 200:
+                    contact = (resp.json() or {}).get("contact")
+                    if contact:
+                        found = _full_contact(contact)
+                        break
+            except Exception as e:
+                attempts.append({"search": extra, "status": "error", "body": repr(e)})
+        results.append({"customer": c, "attempts": attempts,
+                        "address": _address_from_contact(found)})
+    return results

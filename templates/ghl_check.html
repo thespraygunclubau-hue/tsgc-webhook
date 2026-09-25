@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% set show_logout = true %}
+{% block title %}GHL check — TSGC Registry{% endblock %}
+{% block content %}
+  <p><a href="{{ url_for('board') }}" class="muted">&larr; Back to customers</a></p>
+  <h2 style="margin-top:0;">GHL connection check</h2>
+
+  <div class="card">
+    <table>
+      <tr><th>GHL_API_TOKEN</th><td>{% if info.token_set %}Set — starts {{ info.token_hint }}{% else %}<b style="color:#b3261e">Not set on Render</b>{% endif %}</td></tr>
+      <tr><th>GHL_LOCATION_ID</th><td>{% if info.location_id %}{{ info.location_id }}{% else %}<b style="color:#b3261e">Not set on Render</b>{% endif %}</td></tr>
+      <tr><th>Missing address</th><td>{{ missing_count }} customer{{ '' if missing_count == 1 else 's' }}</td></tr>
+      <tr><th>Last pull</th><td>
+        {% if pull.running %}Running — {{ pull.done }} of {{ pull.total }} checked, {{ pull.filled }} found
+        {% elif pull.finished_at %}Finished — {{ pull.filled }} found, {{ pull.not_found }} not found, {{ pull.errors }} errors{% if pull.message %}<br>{{ pull.message }}{% endif %}
+        {% else %}Never run{% endif %}
+      </td></tr>
+    </table>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  </div>
+
+  {% if results %}
+    <h3>Test lookups (first {{ results|length }} customers without an address)</h3>
+    {% for r in results %}
+      <div class="card">
+        <div class="name">{{ r.customer.full_name }}</div>
+        <div class="muted">{{ r.customer.email or 'no email' }} · {{ r.customer.phone or 'no phone' }}</div>
+        <p><b>Result:</b>
+          {% if r.address %}Found — {{ [r.address.address1, r.address.city, r.address.state, r.address.postal_code]|select|join(', ') }}
+          {% else %}No address found{% endif %}</p>
+        {% for a in r.attempts %}
+          <div style="font-size:13px; margin-top:8px;">
+            Searched {{ a.search }} → <b>HTTP {{ a.status }}</b>
+            <pre style="white-space:pre-wrap; background:#f1f0ec; padding:8px; border-radius:6px; margin:4px 0 0;">{{ a.body }}</pre>
+          </div>
+        {% else %}
+          <p class="muted">No email or phone to search with.</p>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  {% elif info.token_set and info.location_id and not missing_count %}
+    <p class="muted">Every customer already has an address.</p>
+  {% endif %}
+{% endblock %}

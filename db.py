@@ -67,6 +67,11 @@ def _run_schema_additions(conn):
             alter table customers add column if not exists city text;
             alter table customers add column if not exists state text;
             alter table customers add column if not exists postal_code text;
+            create table if not exists ghl_pull_status (
+                id int primary key,
+                data jsonb not null,
+                updated_at timestamptz not null default now()
+            );
             """
         )
     conn.commit()
@@ -606,5 +611,36 @@ def fill_address(customer_id, address):
             done = cur.rowcount > 0
             conn.commit()
             return done
+    finally:
+        conn.close()
+
+
+def get_pull_status():
+    """Returns (status dict or None, seconds since last update or None)."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "select data, extract(epoch from now() - updated_at) from ghl_pull_status where id = 1"
+            )
+            row = cur.fetchone()
+            conn.commit()
+            return (row[0], float(row[1])) if row else (None, None)
+    finally:
+        conn.close()
+
+
+def save_pull_status(data):
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into ghl_pull_status (id, data, updated_at) values (1, %s, now())
+                on conflict (id) do update set data = excluded.data, updated_at = now()
+                """,
+                (psycopg2.extras.Json(data),),
+            )
+            conn.commit()
     finally:
         conn.close()

@@ -391,6 +391,29 @@ def ghl_pull_addresses():
     return redirect(url_for("board") if started else url_for("board", err=message))
 
 
+@app.route("/ghl/check", methods=["GET"])
+def ghl_check():
+    """Diagnostics: shows exactly what GHL answers for a few customers
+    that are missing an address."""
+    if not _logged_in():
+        return redirect(url_for("login"))
+    token = ghl.GHL_API_TOKEN or ""
+    info = {
+        "token_set": bool(token),
+        "token_hint": (token[:4] + "…" + f" ({len(token)} characters)") if token else "",
+        "location_id": ghl.GHL_LOCATION_ID or "",
+    }
+    missing, results, error = [], [], None
+    try:
+        missing = db.list_customers_missing_address()
+        if ghl.configured():
+            results = ghl.diagnose(missing[:3])
+    except Exception as e:
+        error = repr(e)
+    return render_template("ghl_check.html", info=info, missing_count=len(missing),
+                           results=results, pull=ghl.status(), error=error)
+
+
 @app.route("/ghl/pull-status", methods=["GET"])
 def ghl_pull_status():
     if not _logged_in():

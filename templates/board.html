@@ -17,6 +17,7 @@
   .md .bd-flash { margin: 0 44px 16px 0; }
   .bd-pull { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; margin: 0; }
   .bd-pull span { font-size: 12px; color: var(--muted); }
+  .bd-pull span a { color: var(--muted); }
   .btn-pull { background: var(--card); color: var(--text); border: 1px solid var(--border); padding: 10px 16px; font-size: 14px; }
   .btn-pull:hover { background: var(--card); border-color: var(--text); }
   .pbar { height: 6px; background: #cfe9d7; border-radius: 99px; margin-top: 8px; overflow: hidden; }
@@ -72,7 +73,7 @@
       <form method="post" action="{{ url_for('ghl_pull_addresses') }}" class="bd-pull"
             data-confirm="Look up addresses in GHL for the {{ missing_address }} customer{{ '' if missing_address == 1 else 's' }} without one?&#10;&#10;Only blank addresses are filled in — nothing already in the app is changed.">
         <button type="submit" class="btn-pull">Pull addresses from GHL</button>
-        <span>{{ missing_address }} customer{{ '' if missing_address == 1 else 's' }} without an address</span>
+        <span>{{ missing_address }} customer{{ '' if missing_address == 1 else 's' }} without an address · <a href="{{ url_for('ghl_check') }}">Check GHL connection</a></span>
       </form>
     {% endif %}
   </div>
