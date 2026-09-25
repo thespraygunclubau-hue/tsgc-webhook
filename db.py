@@ -17,10 +17,54 @@ import psycopg2.extras
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 
+_schema_ready = False
+
+
 def get_conn():
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL is not set")
-    return psycopg2.connect(DATABASE_URL)
+    conn = psycopg2.connect(DATABASE_URL)
+    _ensure_schema(conn)
+    return conn
+
+
+def _ensure_schema(conn):
+    """
+    Small additions the app needs on top of schema.sql, created
+    automatically the first time the app connects — nothing to run in
+    Supabase by hand. Safe to run repeatedly.
+
+      deleted_cards        Trello cards whose entries were deleted in the
+                           app, so the Trello sync doesn't bring them back.
+      customers.edited_at  set when a customer / entry is edited in the
+      machines.edited_at   app, so the Trello sync doesn't overwrite it.
+    """
+    global _schema_ready
+    if _schema_ready:
+        return
+    try:
+        _run_schema_additions(conn)
+        _schema_ready = True
+    except Exception as e:
+        # Never let this block the app (or the webhook) — log and retry
+        # on the next connection.
+        conn.rollback()
+        print("SCHEMA SETUP ERROR:", repr(e))
+
+
+def _run_schema_additions(conn):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            create table if not exists deleted_cards (
+                trello_card_id text primary key,
+                deleted_at timestamptz not null default now()
+            );
+            alter table customers add column if not exists edited_at timestamptz;
+            alter table machines add column if not exists edited_at timestamptz;
+            """
+        )
+    conn.commit()
 
 
 def _clean(value):
@@ -40,37 +84,12 @@ def is_template_name(name):
     return (name or "").strip().lower().startswith("template")
 
 
-_deleted_table_ready = False
-
-
-def _ensure_deleted_table(cur):
-    """
-    deleted_cards remembers Trello cards whose entries were deleted in the
-    app. Without it, the next time someone edits or moves that card in
-    Trello, the Trello sync would quietly re-create the entry.
-    Created automatically — no need to run anything in Supabase.
-    """
-    global _deleted_table_ready
-    if _deleted_table_ready:
-        return
-    cur.execute(
-        """
-        create table if not exists deleted_cards (
-            trello_card_id text primary key,
-            deleted_at timestamptz not null default now()
-        )
-        """
-    )
-    _deleted_table_ready = True
-
-
 def is_card_deleted(trello_card_id):
     if not trello_card_id:
         return False
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            _ensure_deleted_table(cur)
             cur.execute("select 1 from deleted_cards where trello_card_id = %s", (trello_card_id,))
             found = cur.fetchone() is not None
             conn.commit()
@@ -80,7 +99,6 @@ def is_card_deleted(trello_card_id):
 
 
 def _remember_deleted_cards(cur, card_ids):
-    _ensure_deleted_table(cur)
     for cid in card_ids:
         if cid:
             cur.execute(
@@ -145,6 +163,21 @@ def upsert_customer(full_name, phone, email, business_name):
             if not existing and email:
                 cur.execute("select * from customers where email = %s", (email,))
                 existing = cur.fetchone()
+
+            if existing and existing.get("edited_at"):
+                # Edited by staff in the app — keep their version and only
+                # fill in anything that's still blank.
+                cur.execute(
+                    """
+                    update customers
+                    set phone = coalesce(phone, %s), email = coalesce(email, %s),
+                        business_name = coalesce(business_name, %s), updated_at = now()
+                    where id = %s
+                    """,
+                    (phone, email, business_name, existing["id"]),
+                )
+                conn.commit()
+                return str(existing["id"])
 
             if existing:
                 new_phone = phone or existing["phone"]
@@ -238,7 +271,20 @@ def upsert_machine_by_card(customer_id, fields):
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            if existing:
+            if existing and existing.get("edited_at"):
+                # Edited by staff in the app — only refresh the Trello
+                # link/list, leave the details and customer as they are.
+                cur.execute(
+                    """
+                    update machines
+                    set trello_card_url = coalesce(%s, trello_card_url),
+                        trello_list_id = coalesce(%s, trello_list_id)
+                    where trello_card_id = %s
+                    returning id
+                    """,
+                    [fields.get("trello_card_url"), fields.get("trello_list_id"), trello_card_id],
+                )
+            elif existing:
                 set_clause = ", ".join(f"{c} = %s" for c in columns)
                 cur.execute(
                     f"""
@@ -390,5 +436,91 @@ def list_board_customers(limit=5000):
                 (limit,),
             )
             return cur.fetchall()
+    finally:
+        conn.close()
+
+
+# --------------------------------------------------------------------
+# Editing (app only — Trello cards are not changed)
+# --------------------------------------------------------------------
+
+class DuplicateContact(ValueError):
+    """Raised when an edit would give a customer a phone/email that
+    another customer already has."""
+
+
+def get_customer(customer_id):
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("select * from customers where id = %s", (customer_id,))
+            return cur.fetchone()
+    finally:
+        conn.close()
+
+
+def update_customer(customer_id, full_name, phone, email, business_name):
+    full_name = _clean(full_name)
+    if not full_name:
+        raise ValueError("Name can't be empty.")
+    phone, email, business_name = _clean(phone), _clean(email), _clean(business_name)
+
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            for col, val in (("phone", phone), ("email", email)):
+                if val:
+                    cur.execute(
+                        f"select full_name from customers where {col} = %s and id <> %s",
+                        (val, customer_id),
+                    )
+                    clash = cur.fetchone()
+                    if clash:
+                        raise DuplicateContact(
+                            f"That {col} already belongs to {clash['full_name']}."
+                        )
+            cur.execute(
+                """
+                update customers
+                set full_name = %s, phone = %s, email = %s, business_name = %s,
+                    updated_at = now(), edited_at = now()
+                where id = %s
+                """,
+                (full_name, phone, email, business_name, customer_id),
+            )
+            updated = cur.rowcount > 0
+            conn.commit()
+            return updated
+    finally:
+        conn.close()
+
+
+EDITABLE_MACHINE_FIELDS = [
+    "form_type", "machine", "model", "serial_number", "symptoms",
+    "hire_date", "return_date", "hire_charge", "security_deposit", "accessories",
+]
+
+
+def update_machine(machine_id, fields):
+    """Returns the customer_id the entry belongs to, or None if not found."""
+    values = [_clean(fields.get(c)) for c in EDITABLE_MACHINE_FIELDS]
+    ft_index = EDITABLE_MACHINE_FIELDS.index("form_type")
+    values[ft_index] = "hire" if values[ft_index] == "hire" else "dropoff"
+
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            set_clause = ", ".join(f"{c} = %s" for c in EDITABLE_MACHINE_FIELDS)
+            cur.execute(
+                f"""
+                update machines set {set_clause}, edited_at = now()
+                where id = %s
+                returning customer_id
+                """,
+                values + [machine_id],
+            )
+            row = cur.fetchone()
+            conn.commit()
+            return str(row[0]) if row else None
     finally:
         conn.close()

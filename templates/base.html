@@ -120,6 +120,38 @@
       var msg = e.target.getAttribute && e.target.getAttribute('data-confirm');
       if (msg && !window.confirm(msg)) e.preventDefault();
     }, true);
+
+    // Edit / Cancel buttons: swap a section between view and edit form.
+    // Delegated so it also works inside the customer pop-up.
+    document.addEventListener('click', function (e) {
+      var btn = e.target.closest && e.target.closest('[data-edit],[data-cancel]');
+      if (!btn) return;
+      var id = btn.getAttribute('data-edit') || btn.getAttribute('data-cancel');
+      var editing = btn.hasAttribute('data-edit');
+      var form = document.getElementById(id);
+      var view = document.querySelector('[data-view="' + id + '"]');
+      if (!form) return;
+      if (!editing) form.reset();
+      form.hidden = !editing;
+      if (view) view.hidden = editing;
+      if (editing) {
+        var first = form.querySelector('input,select,textarea');
+        if (first) first.focus();
+      }
+      syncType(form);
+    });
+
+    // Show Issue for Drop-Off, hire fields for Hire.
+    function syncType(form) {
+      var sel = form && form.querySelector('[data-type-switch]');
+      if (!sel) return;
+      var hire = sel.value === 'hire';
+      form.querySelectorAll('.f-hire').forEach(function (el) { el.hidden = !hire; });
+      form.querySelectorAll('.f-dropoff').forEach(function (el) { el.hidden = hire; });
+    }
+    document.addEventListener('change', function (e) {
+      if (e.target.matches && e.target.matches('[data-type-switch]')) syncType(e.target.form);
+    });
   </script>
 </body>
 </html>

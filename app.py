@@ -259,6 +259,7 @@ def board():
         query=request.args.get("q", ""),
         open_id=request.args.get("open", ""),
         flash_msg=request.args.get("msg", ""),
+        flash_err=request.args.get("err", ""),
     )
 
 
@@ -305,6 +306,38 @@ def delete_entry(machine_id):
     if customer_id:
         return redirect(url_for("board", open=customer_id, msg="Entry deleted."))
     return redirect(url_for("board"))
+
+
+@app.route("/customer/<customer_id>/edit", methods=["POST"])
+def edit_customer(customer_id):
+    """Edits a customer's details in the app only — Trello is untouched."""
+    if not _logged_in():
+        return redirect(url_for("login"))
+    f = request.form
+    try:
+        db.update_customer(customer_id, f.get("full_name"), f.get("phone"),
+                           f.get("email"), f.get("business_name"))
+    except ValueError as e:  # includes DuplicateContact
+        return redirect(url_for("board", open=customer_id, err=str(e)))
+    except Exception as e:
+        print("EDIT CUSTOMER ERROR:", repr(e))
+        return redirect(url_for("board", open=customer_id, err="Save failed — check server logs."))
+    return redirect(url_for("board", open=customer_id, msg="Customer details saved."))
+
+
+@app.route("/entry/<machine_id>/edit", methods=["POST"])
+def edit_entry(machine_id):
+    """Edits one service entry in the app only — Trello is untouched."""
+    if not _logged_in():
+        return redirect(url_for("login"))
+    try:
+        customer_id = db.update_machine(machine_id, request.form)
+    except Exception as e:
+        print("EDIT ENTRY ERROR:", repr(e))
+        return redirect(url_for("board", err="Save failed — check server logs."))
+    if not customer_id:
+        return redirect(url_for("board", err="That entry no longer exists."))
+    return redirect(url_for("board", open=customer_id, msg="Entry saved."))
 
 
 @app.route("/customer/<customer_id>/delete", methods=["POST"])

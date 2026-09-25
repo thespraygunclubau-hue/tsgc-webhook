@@ -124,12 +124,20 @@ def sync_card(card_id, card=None):
     list_id = card.get("idList")
     form_type = form_type_for_list(list_id, fields)
 
-    customer_id = db.upsert_customer(
-        full_name,
-        fields.get("phone"),
-        fields.get("email"),
-        fields.get("business_name"),
-    )
+    # If this card is already linked to a customer whose details were
+    # edited in the app, keep it on that customer — otherwise an old
+    # phone/email on the card could split it off into a duplicate.
+    existing = db.get_machine_by_trello_card_id(card_id)
+    owner = db.get_customer(existing["customer_id"]) if existing else None
+    if owner and owner.get("edited_at"):
+        customer_id = str(owner["id"])
+    else:
+        customer_id = db.upsert_customer(
+            full_name,
+            fields.get("phone"),
+            fields.get("email"),
+            fields.get("business_name"),
+        )
 
     machine_fields = {
         "form_type": form_type,
