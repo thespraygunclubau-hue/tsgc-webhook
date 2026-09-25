@@ -295,6 +295,7 @@ def board():
         customers=customers,
         error=error,
         query=request.args.get("q", ""),
+        tab=request.args.get("tab", ""),
         open_id=request.args.get("open", ""),
         flash_msg=request.args.get("msg", ""),
         flash_err=request.args.get("err", ""),

@@ -437,7 +437,7 @@ def list_board_customers(limit=5000):
     Everything the board needs in one query: each customer with their
     service count, latest job type and date, and a lowercase blob of all
     their machine / model / serial values so the live search box can
-    match on those too. Newest activity first. Templates hidden.
+    match on those too. Alphabetical by name. Templates hidden.
     """
     conn = get_conn()
     try:
@@ -447,6 +447,8 @@ def list_board_customers(limit=5000):
                 select c.id, c.full_name, c.phone, c.email, c.business_name, c.created_at,
                        c.address1, c.city, c.state, c.postal_code,
                        count(m.id) as service_count,
+                       count(m.id) filter (where m.form_type = 'hire') as hire_count,
+                       count(m.id) filter (where m.form_type is distinct from 'hire') as dropoff_count,
                        max(m.created_at) as last_service_at,
                        (select m3.form_type from machines m3
                          where m3.customer_id = c.id
@@ -460,7 +462,7 @@ def list_board_customers(limit=5000):
                 left join machines m on m.customer_id = c.id
                 where c.full_name not ilike 'template%%'
                 group by c.id
-                order by coalesce(max(m.created_at), c.created_at) desc
+                order by lower(c.full_name) asc, c.created_at asc
                 limit %s
                 """,
                 (limit,),
